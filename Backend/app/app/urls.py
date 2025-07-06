@@ -1,27 +1,34 @@
-"""
-URL configuration for app project.
-
-The `urlpatterns` list routes URLs to views. For more information please see:
-    https://docs.djangoproject.com/en/5.2/topics/http/urls/
-Examples:
-Function views
-    1. Add an import:  from my_app import views
-    2. Add a URL to urlpatterns:  path('', views.home, name='home')
-Class-based views
-    1. Add an import:  from other_app.views import Home
-    2. Add a URL to urlpatterns:  path('', Home.as_view(), name='home')
-Including another URLconf
-    1. Import the include() function: from django.urls import include, path
-    2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
-"""
-
 from django.contrib import admin
-from django.urls import path, include
-
-
-
+from django.urls import path, include, re_path # Import re_path for regex and redirect
+from rest_framework_simplejwt.views import (
+    TokenObtainPairView,
+    TokenRefreshView,
+)
+from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
+from django.views.generic import RedirectView # Import RedirectView
 
 urlpatterns = [
-    path("admin/", admin.site.urls),           
-    path("users/", include("users.urls") ),           
+    # Redirect root URL to Swagger UI in DEBUG mode
+    # This acts as your "homepage" for the API backend
+    re_path(r'^$', RedirectView.as_view(url='/api/schema/swagger-ui/', permanent=False)),
+
+    path("admin/", admin.site.urls),
+    
+    # API endpoints for your apps
+    path("api/authenticator/", include("authenticator.urls")), # Updated to authenticator
+    path("api/users/", include("users.urls")),
+    # path("api/therapy_sessions/", include("therapy_sessions.urls")), # Updated to therapy_sessions
+    # path("api/transcription/", include("transcription.urls")),
+    # path("api/history/", include("history.urls")),
+    # path("api/soap/", include("soap.urls")),
+    # path("api/core/", include("core.urls")),
+
+    # JWT Authentication URLs
+    path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
+    path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+
+    # OpenAPI/Swagger UI URLs
+    path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
+    # Only display Swagger UI in debug mode (controlled by SPECTACULAR_SETTINGS['SERVE_INCLUDE_SCHEMA'])
+    path('api/schema/swagger-ui/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
 ]

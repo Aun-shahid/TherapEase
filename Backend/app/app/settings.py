@@ -11,6 +11,13 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 from pathlib import Path
+from datetime import timedelta # Import timedelta for JWT settings
+import os # Import os for environment variables
+from dotenv import load_dotenv # Import load_dotenv for .env file support
+
+# Load environment variables from .env file (if it exists)
+# Make sure your .env file is in the same directory as manage.py
+load_dotenv()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -20,12 +27,16 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = "django-insecure-xlb)p+*0f81&n^mnnta1_-n%mw^dwt#6tgqrcp#5b7+hpp(v^g"
+# IMPORTANT: In production, this should be loaded from an environment variable!
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "django-insecure-xlb)p+*0f81&n^mnnta1_-n%mw^dwt#6tgqrcp#5b7+hpp(v^g")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+# IMPORTANT: In production, set DEBUG to False!
+DEBUG = os.environ.get("DJANGO_DEBUG", "True").lower() == "true"
 
-ALLOWED_HOSTS = []
+# ALLOWED_HOSTS for production. Add your domain and Elastic Beanstalk URL here.
+# For development, if DEBUG is True, ['*'] is often used, but it's safer to specify.
+ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "").split(",") if not DEBUG else []
 
 
 # Application definition
@@ -37,14 +48,28 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-    "users",
-    "transcription",
     
+    # Third-party apps
+    "rest_framework",                 # Django REST Framework
+    "corsheaders",                    # For handling Cross-Origin Resource Sharing
+    "rest_framework_simplejwt",       # For JSON Web Token authentication
+    "drf_spectacular",                # For OpenAPI (Swagger UI) documentation
+    "storages",                       # For AWS S3 integration (if using)
+
+    # Your custom apps
+    "authenticator",           # Your custom authentication app (contains CustomUser)
+    "users",          # User profiles (if separated from auth.CustomUser)
+    "transcription",  # Transcription logic
+    "therapy_sessions",       # Therapy session management
+    "history",        # User history/logs
+    "soap",           # SOAP note generation
+    "core",           # Core utilities/shared models
 ]
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
+    "corsheaders.middleware.CorsMiddleware", # CORS middleware must be high up
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
@@ -61,6 +86,7 @@ TEMPLATES = [
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
+                "django.template.context_processors.debug", # Added for debug purposes
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
@@ -75,10 +101,17 @@ WSGI_APPLICATION = "app.wsgi.application"
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
+# PostgreSQL Database Configuration
+# IMPORTANT: For production, load these from actual environment variables (e.g., in your Elastic Beanstalk config)!
+# The values provided here are for local development defaults.
 DATABASES = {
     "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": os.environ.get("DB_NAME", "therapease"), # Set to your database name
+        "USER": os.environ.get("DB_USER", "postgres"),   # Set to your database user
+        "PASSWORD": os.environ.get("DB_PASSWORD", "qwerty"), # Set to your database password
+        "HOST": os.environ.get("DB_HOST", "localhost"), # Usually 'localhost' for local dev
+        "PORT": os.environ.get("DB_PORT", "5432"), # Default PostgreSQL port
     }
 }
 
@@ -107,7 +140,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = "en-us"
 
-TIME_ZONE = "UTC"
+TIME_ZONE = "UTC" # Consider setting to 'Asia/Karachi' if all users are local
 
 USE_I18N = True
 
@@ -118,8 +151,120 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = "static/"
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles') # For collecting static files in production
+
+
+# Media files (User-uploaded content like profile pictures, audio)
+MEDIA_URL = "/media/"
+MEDIA_ROOT = os.path.join(BASE_DIR, "media")
+
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+
+# --- Custom Settings for MindScribe Project ---
+
+# Custom User Model
+# This tells Django to use your CustomUser model from the 'auth' app
+AUTH_USER_MODEL = 'users.User'
+
+# Django REST Framework settings
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'rest_framework.authentication.SessionAuthentication', # Optional, for browsable API
+    ),
+    'DEFAULT_PERMISSION_CLASSES': (
+        'rest_framework.permissions.IsAuthenticated', # Default to requiring authentication
+    ),
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema', # For OpenAPI
+}
+
+# Django REST Framework Simple JWT settings
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60), # Access tokens valid for 60 minutes
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),   # Refresh tokens valid for 7 days
+    'ROTATE_REFRESH_TOKENS': True,                 # Generate new refresh token on refresh
+    'BLACKLIST_AFTER_ROTATION': True,              # Blacklist old refresh token
+    'ALGORITHM': 'HS256',
+    'SIGNING_KEY': SECRET_KEY,
+    'VERIFYING_KEY': None,
+    'AUDIENCE': None,
+    'ISSUER': None,
+    'JWK_URL': None,
+    'LEEWAY': 0,
+
+    'AUTH_HEADER_TYPES': ('Bearer',),
+    'AUTH_HEADER_NAME': 'HTTP_AUTHORIZATION',
+    'USER_ID_FIELD': 'id',
+    'USER_ID_CLAIM': 'user_id',
+    'USER_AUTHENTICATION_RULE': 'rest_framework_simplejwt.authentication.default_user_authentication_rule',
+
+    'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
+    'TOKEN_TYPE_CLAIM': 'token_type',
+    'TOKEN_USER_CLASS': 'rest_framework_simplejwt.models.TokenUser',
+
+    'JTI_CLAIM': 'jti',
+
+    'SLIDING_TOKEN_LIFETIME': timedelta(minutes=5),
+    'SLIDING_TOKEN_REFRESH_LIFETIME': timedelta(days=1),
+}
+
+# CORS Headers settings
+# IMPORTANT: In production, restrict CORS_ALLOWED_ORIGINS to your actual frontend domain(s)!
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:8081",  # For React Native development server
+    "http://127.0.0.1:8081",
+    # Add other local development origins if needed (e.g., for web testing)
+]
+# If you need to allow all origins during early development (NOT for production):
+# CORS_ALLOW_ALL_ORIGINS = True
+# CORS_ALLOWED_ORIGIN_REGEXES = [
+#     r"^https?://.*\.yourdomain\.com$", # Example for production subdomains
+# ]
+CORS_ALLOW_CREDENTIALS = True # Allow cookies/auth headers to be sent cross-origin
+
+# DRF Spectacular (OpenAPI/Swagger) settings
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'TherapEase API',
+    'DESCRIPTION': 'API documentation for the TherapEase project backend.',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': DEBUG, # Only serve schema (Swagger UI) in DEBUG mode
+    # Other settings like security schemes, contact info, etc.
+    'SCHEMA_PATH_PREFIX': r'/api/v[0-9]', # Example: only include paths starting with /api/vX
+    'SWAGGER_UI_SETTINGS': {
+        'deepLinking': True,
+        'displayRequestDuration': True,
+        'filter': True,
+        'showExtensions': True,
+        'showCommonExtensions': True,
+    },
+    'COMPONENT_SPLIT_REQUEST': True, # Improves performance for large schemas
+}
+
+# Celery settings (for background tasks like audio processing, AI pipeline)
+# IMPORTANT: Use environment variables for production!
+CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', 'redis://localhost:6379/0')
+CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', 'redis://localhost:6379/0')
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = 'UTC' # Or 'Asia/Karachi'
+
+# AWS S3 Storage settings (using django-storages and boto3)
+# Only enable these if you are ready to use S3 for file storage
+# If you're developing locally and not using S3 yet, you can comment this out
+# or ensure DEFAULT_FILE_STORAGE is not set to S3Boto3Storage.
+# AWS_ACCESS_KEY_ID = os.environ.get('AWS_ACCESS_KEY_ID')
+# AWS_SECRET_ACCESS_KEY = os.environ.get('AWS_SECRET_ACCESS_KEY')
+# AWS_STORAGE_BUCKET_NAME = os.environ.get('AWS_STORAGE_BUCKET_NAME')
+# AWS_S3_REGION_NAME = os.environ.get('AWS_S3_REGION_NAME', 'us-east-1') # e.g., 'ap-south-1' for Mumbai
+# AWS_S3_FILE_OVERWRITE = False # Don't overwrite files with the same name
+# AWS_DEFAULT_ACL = None # Or 'public-read' if files should be publicly accessible
+# AWS_S3_VERIFY_SSL = True
+# AWS_QUERYSTRING_AUTH = False # Don't include auth in URL for public files
+# DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
+# AWS_S3_CUSTOM_DOMAIN = f'{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com' # Optional: if using a custom domain

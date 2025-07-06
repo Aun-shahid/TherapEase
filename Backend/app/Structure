@@ -1,0 +1,42 @@
+## App Breakdown:
+
+### 1. users/ - User Management
+- User profiles (Patient, Therapist, Admin)
+- Profile management
+- User preferences
+
+### 2. authentication/ - Authentication & Authorization
+- JWT token management
+- Login/logout endpoints
+- Password reset functionality
+- Permission classes
+
+### 3. sessions/ - Therapy Sessions
+- Session creation and management
+- QR code generation for session linking
+- Audio file handling
+- Session analytics and insights
+
+### 4. transcription/ - AI Transcription
+- Audio processing pipeline
+- Speaker diarization
+- Transcription storage
+- Emotion analysis
+
+### 5. soap_notes/ - SOAP Notes
+- SOAP note generation
+- Templates and formatting
+- Clinical documentation
+- Version control for notes
+
+### 6. patient_history/ - Patient History & Mood Tracking
+- Mood journaling
+- Historical data storage
+- Progress tracking
+- Reflection prompts
+
+### 7. core/ - Shared Components
+- Common utilities
+- Base models
+- Shared serializers
+- Custom middleware
