@@ -22,87 +22,118 @@ This comprehensive solution empowers mental health professionals to dedicate mor
 
 ## Project Status
 
-TherapEase is in early development. Features are experimental, and improvements are ongoing. Contributions and feedback are welcome!
+MindScribe is actively under development with core functionality being implemented and tested. The system architecture is established, and primary features are in various stages of completion. Team members are encouraged to contribute to ongoing development efforts, and feedback from early testing phases is being incorporated into system improvements.
+
+---
 
 ## Prerequisites
 
-Before running TherapEase, ensure you have:
+Ensure your system meets the following requirements:
 
--   Python 3.13
--   Node.js 22.x and npm (for the test frontend)
--   pip (Python package manager)
--   A system with an internet connection for installing dependencies
+* **Python 3.11**: Required for compatibility with dependencies and AI libraries.
+* **PostgreSQL Database Server**: Needed for data persistence and session management.
+* **Node.js 22.x and npm**: Required for frontend development components.
+* **Git**: For repository management and collaboration.
+* **Environment Configuration**: .env file with database credentials and API keys (provided separately).
 
-## Setup and Running Instructions
+---
 
-### Backend Setup
+## Backend Setup Instructions
 
-The backend uses Python and FastAPI. Follow these steps:
+### Database Preparation
 
-1.  **Navigate to the Backend Directory:**
-    ```bash
-    cd backend
-    ```
-2.  **Create a Virtual Environment:**
-    ```bash
-    python3.13 -m venv venv
-    ```
-3.  **Activate the Virtual Environment:**
-    -   On Windows:
-        ```bash
-        venv\Scripts\activate
-        ```
-    -   On macOS/Linux:
-        ```bash
-        source venv/bin/activate
-        ```
-4.  **Install Requirements:**
-    ```bash
-    pip install -r requirements.txt
-    ```
-5.  **Run the Backend Server:**
-    From the `backend` directory, start the FastAPI server using Uvicorn:
-    ```bash
-    uvicorn src.main:app --reload
-    ```
-6.  **Test the APIs (Optional):**
-    Access the Swagger UI to test the APIs at:
-    [http://localhost:8000/docs](http://localhost:8000/docs)
+1. Install PostgreSQL and configure with credentials matching the `.env` file.
+2. Create a new database instance for MindScribe development.
 
-### Frontend Setup (Optional)
+### Project Configuration
 
-The test frontend is built with React and located in `test_frontend/mindscribe`. To run it:
+1. Navigate to the `Therapease/backend/` directory.
+2. Create a virtual environment:
 
-1.  **Navigate to the Frontend Directory:**
-    ```bash
-    cd test_frontend/mindscribe
-    ```
-2.  **Install Dependencies:**
-    ```bash
-    npm install
-    ```
-3.  **Run the Development Server:**
-    ```bash
-    npm run dev
-    ```
-4.  **Access the Frontend:**
-    Open your browser and navigate to the URL provided (typically `http://localhost:5173`).
+   ```bash
+   py -3.11 -m venv venv
+   ```
+3. Activate the virtual environment:
 
-Boom! The server and frontend (if set up) are now running, and you can explore TherapEase!
+   * **Windows**:
 
-## Project Structure
+     ```bash
+     venv\Scripts\activate
+     ```
+   * **macOS/Linux**:
 
--   `backend/`: FastAPI backend code, including AI models and API endpoints for SOAP note generation and Urdu transcription.
--   `test_frontend/mindscribe/`: React-based test frontend for interacting with the backend APIs.
--   `requirements.txt`: Python dependencies for the backend.
+     ```bash
+     source venv/bin/activate
+     ```
+4. Install dependencies:
 
-## Contributing
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-We welcome contributions! To contribute:
+### Environment Setup
 
-1.  Fork the repository.
-2.  Create a new branch for your feature or bug fix.
-3.  Submit a pull request with a clear description of changes.
+* Place the `.env` file in the `Therapease/backend/` directory.
+* Ensure database credentials match PostgreSQL settings.
+
+### Database Migration
+
+1. Generate migration files:
+
+   ```bash
+   python manage.py makemigrations
+   ```
+2. Apply migrations:
+
+   ```bash
+   python manage.py migrate
+   ```
+3. Create a superuser:
+
+   ```bash
+   python manage.py createsuperuser
+   ```
+
+### Server Launch
+
+Start the development server:
+
+```bash
+python manage.py runserver
+```
+
+* Backend available at: `http://127.0.0.1:8000/`
+* Admin interface: `http://127.0.0.1:8000/admin/`
+
+---
+
+## Project Architecture
+
+* **Backend System**: Django-based API server for AI processing, database operations, and clinical note generation.
+* **Mobile Application**: React Native app for recording sessions, reviewing notes, and managing clients.
+* **Web Frontend**: Web interface for practice management, detailed note editing, and admin functions.
+* **Database Layer**: PostgreSQL database managing client data, session records, notes, and user auth.
+
+---
+
+## Development Workflow
+
+* Use feature branches for development.
+* Generate migration files for DB changes.
+* Update `requirements.txt` for new dependencies.
+* Keep `.env` secure and out of version control.
+
+---
+
+## Contributing Guidelines
+
+* Use feature branches.
+* Test changes thoroughly.
+* Submit PRs with clear descriptions.
+* Follow API and coding standards.
+* Ensure DB changes are backward-compatible.
+
+---
 
 ## License
 
@@ -112,8 +143,9 @@ This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) f
 
 ## Support and Contact
 
-For questions, suggestions, or feedback, open an issue on this repository or contact the maintainers.
+For technical issues or setup help:
 
----
+* Open an issue in the repository
+* Use established communication channels for team discussions
 
-TherapEase - Simplifying therapy note-taking, one session at a time!
+**MindScribe** – Transforming mental health documentation through intelligent automation.
