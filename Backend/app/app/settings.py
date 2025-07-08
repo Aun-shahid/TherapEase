@@ -36,7 +36,7 @@ DEBUG = os.environ.get("DJANGO_DEBUG", "True").lower() == "true"
 
 # ALLOWED_HOSTS for production. Add your domain and Elastic Beanstalk URL here.
 # For development, if DEBUG is True, ['*'] is often used, but it's safer to specify.
-ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "").split(",") if not DEBUG else []
+ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "").split(",") if os.environ.get("DJANGO_ALLOWED_HOSTS") else []
 
 
 # Application definition
@@ -108,7 +108,7 @@ WSGI_APPLICATION = "app.wsgi.application"
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
-        "NAME": os.environ.get("DB_NAME", "therapease"), # Set to your database name
+        "NAME": os.environ.get("DB_NAME", "MindScribe"), # Set to your database name
         "USER": os.environ.get("DB_USER", "postgres"),   # Set to your database user
         "PASSWORD": os.environ.get("DB_PASSWORD", "qwerty"), # Set to your database password
         "HOST": os.environ.get("DB_HOST", "localhost"), # Usually 'localhost' for local dev
@@ -186,10 +186,10 @@ REST_FRAMEWORK = {
 
 # Django REST Framework Simple JWT settings
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
-    'ROTATE_REFRESH_TOKENS': True,
-    'BLACKLIST_AFTER_ROTATION': True,
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=int(os.environ.get("JWT_ACCESS_TOKEN_LIFETIME", "60"))),
+    'REFRESH_TOKEN_LIFETIME': timedelta(minutes=int(os.environ.get("JWT_REFRESH_TOKEN_LIFETIME", "10080"))),
+    'ROTATE_REFRESH_TOKENS': os.environ.get("JWT_ROTATE_REFRESH_TOKENS", "True").lower() == "true",
+    'BLACKLIST_AFTER_ROTATION': os.environ.get("JWT_BLACKLIST_AFTER_ROTATION", "True").lower() == "true",
     'UPDATE_LAST_LOGIN': True,
     
     'ALGORITHM': 'HS256',
@@ -212,13 +212,14 @@ SIMPLE_JWT = {
     'JTI_CLAIM': 'jti',
 
     'SLIDING_TOKEN_REFRESH_EXP_CLAIM': 'refresh_exp',
-    'SLIDING_TOKEN_LIFETIME': timedelta(minutes=60),
-    'SLIDING_TOKEN_REFRESH_LIFETIME': timedelta(days=7),
+    'SLIDING_TOKEN_LIFETIME': timedelta(minutes=int(os.environ.get("JWT_ACCESS_TOKEN_LIFETIME", "60"))),
+    'SLIDING_TOKEN_REFRESH_LIFETIME': timedelta(minutes=int(os.environ.get("JWT_REFRESH_TOKEN_LIFETIME", "10080"))),
 }
 
 # CORS Headers settings
 # IMPORTANT: In production, restrict CORS_ALLOWED_ORIGINS to your actual frontend domain(s)!
 CORS_ALLOWED_ORIGINS = [
+    os.environ.get("FRONTEND_URL", "http://localhost:3000"),  # Read from environment variable
     "http://localhost:8081",  # For React Native development server
     "http://127.0.0.1:8081",
     # Add other local development origins if needed (e.g., for web testing)
@@ -232,9 +233,9 @@ CORS_ALLOW_CREDENTIALS = True # Allow cookies/auth headers to be sent cross-orig
 
 # DRF Spectacular (OpenAPI/Swagger) settings
 SPECTACULAR_SETTINGS = {
-    'TITLE': 'TherapEase API',
-    'DESCRIPTION': 'API documentation for the TherapEase project backend.',
-    'VERSION': '1.0.0',
+    'TITLE': os.environ.get("SITE_NAME", "MindScribe") + ' API',
+    'DESCRIPTION': 'API documentation for the MindScribe project backend.',
+    'VERSION': os.environ.get("VERSION", "1.0.0"),
     'SERVE_INCLUDE_SCHEMA': DEBUG, # Only serve schema (Swagger UI) in DEBUG mode
     # Other settings like security schemes, contact info, etc.
     'SCHEMA_PATH_PREFIX': r'/api/v[0-9]', # Example: only include paths starting with /api/vX
@@ -250,12 +251,12 @@ SPECTACULAR_SETTINGS = {
 
 # Celery settings (for background tasks like audio processing, AI pipeline)
 # IMPORTANT: Use environment variables for production!
-CELERY_BROKER_URL = os.environ.get('CELERY_BROKER_URL', 'redis://localhost:6379/0')
-CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', 'redis://localhost:6379/0')
+CELERY_BROKER_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
+CELERY_RESULT_BACKEND = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
-CELERY_TIMEZONE = 'TIME_ZONE = "Asia/Karachi"'
+CELERY_TIMEZONE = TIME_ZONE
 
 # AWS S3 Storage settings (using django-storages and boto3)
 # Only enable these if you are ready to use S3 for file storage
@@ -271,3 +272,41 @@ CELERY_TIMEZONE = 'TIME_ZONE = "Asia/Karachi"'
 # AWS_QUERYSTRING_AUTH = False # Don't include auth in URL for public files
 # DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
 # AWS_S3_CUSTOM_DOMAIN = f'{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com' # Optional: if using a custom domain
+
+# --- Authentication and Session Settings ---
+
+# Authentication settings
+MAX_LOGIN_ATTEMPTS = int(os.environ.get("MAX_LOGIN_ATTEMPTS", "5"))
+LOCKOUT_DURATION = int(os.environ.get("LOCKOUT_DURATION", "900"))  # 15 minutes
+RATE_LIMIT_REQUESTS = int(os.environ.get("RATE_LIMIT_REQUESTS", "100"))
+RATE_LIMIT_WINDOW = int(os.environ.get("RATE_LIMIT_WINDOW", "900"))  # 15 minutes
+SESSION_TIMEOUT = int(os.environ.get("SESSION_TIMEOUT", "3600"))  # 1 hour
+
+# Session settings
+SESSION_COOKIE_AGE = SESSION_TIMEOUT
+SESSION_SAVE_EVERY_REQUEST = True
+SESSION_EXPIRE_AT_BROWSER_CLOSE = True
+
+# --- Security Settings ---
+SECURE_SSL_REDIRECT = os.environ.get("SECURE_SSL_REDIRECT", "False").lower() == "true"
+SESSION_COOKIE_SECURE = os.environ.get("SESSION_COOKIE_SECURE", "False").lower() == "true"
+CSRF_COOKIE_SECURE = os.environ.get("CSRF_COOKIE_SECURE", "False").lower() == "true"
+
+# --- Email Configuration ---
+EMAIL_BACKEND = os.environ.get("EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")
+EMAIL_HOST = os.environ.get("EMAIL_HOST", "smtp.gmail.com")
+EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "587"))
+EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "True").lower() == "true"
+EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
+DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "noreply@MindScribe.com")
+
+# --- Redis Configuration ---
+REDIS_URL = os.environ.get("REDIS_URL", "redis://127.0.0.1:6379/1")
+
+# --- Frontend Configuration ---
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
+
+# --- Site Configuration ---
+SITE_NAME = os.environ.get("SITE_NAME", "MindScribe")
+VERSION = os.environ.get("VERSION", "1.0.0")

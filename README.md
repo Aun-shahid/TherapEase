@@ -1,6 +1,6 @@
-# TherapEase
+# MindScribe
 
-TherapEase is an AI-powered assistant designed to support psychologists and psychotherapists by streamlining their note-taking process. It listens to therapy session conversations, performs sentiment analysis, and generates structured SOAP (Subjective, Objective, Assessment, Plan) notes. It also supports Urdu-to-text transcription for Urdu-speaking clients, reducing the manual note-taking burden for therapists.
+MindScribe is an AI-powered assistant designed to support psychologists and psychotherapists by streamlining their note-taking process. It listens to therapy session conversations, performs sentiment analysis, and generates structured SOAP (Subjective, Objective, Assessment, Plan) notes. It also supports Urdu-to-text transcription for Urdu-speaking clients, reducing the manual note-taking burden for therapists.
 
 **Note:** This project is in very early development and is a proof-of-concept for our Final Year Project.
 
@@ -12,11 +12,11 @@ TherapEase is an AI-powered assistant designed to support psychologists and psyc
 
 ## Project Status
 
-TherapEase is in early development. Features are experimental, and improvements are ongoing. Contributions and feedback are welcome!
+MindScribe is in early development. Features are experimental, and improvements are ongoing. Contributions and feedback are welcome!
 
 ## Prerequisites
 
-Before running TherapEase, ensure you have:
+Before running MindScribe, ensure you have:
 
 -   Python 3.13
 -   Node.js 22.x and npm (for the test frontend)
@@ -78,7 +78,7 @@ The test frontend is built with React and located in `test_frontend/mindscribe`.
 4.  **Access the Frontend:**
     Open your browser and navigate to the URL provided (typically `http://localhost:5173`).
 
-Boom! The server and frontend (if set up) are now running, and you can explore TherapEase!
+Boom! The server and frontend (if set up) are now running, and you can explore MindScribe!
 
 ## Project Structure
 
@@ -104,4 +104,4 @@ For questions, suggestions, or feedback, open an issue on this repository or con
 
 ---
 
-TherapEase - Simplifying therapy note-taking, one session at a time!
+MindScribe - Simplifying therapy note-taking, one session at a time!

@@ -16,8 +16,8 @@ from .api.langchain import router as langchain_router
 
 
 app = FastAPI(
-    title="TherapEase API",
-    description="API for Therapease application",
+    title="MindScribe API",
+    description="API for MindScribe application",
     version="0.1.0",
 )
 
@@ -39,7 +39,7 @@ app.add_middleware(
 # Root endpoint
 @app.get("/")
 def read_root():
-    return {"message": "Welcome to Therapease API"}
+    return {"message": "Welcome to MindScribe API"}
 
 if __name__ == "__main__":
     
