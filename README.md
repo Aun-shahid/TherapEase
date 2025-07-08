@@ -1,22 +1,32 @@
 # MindScribe
 
-MindScribe is an AI-powered assistant designed to support psychologists and psychotherapists by streamlining their note-taking process. It listens to therapy session conversations, performs sentiment analysis, and generates structured SOAP (Subjective, Objective, Assessment, Plan) notes. It also supports Urdu-to-text transcription for Urdu-speaking clients, reducing the manual note-taking burden for therapists.
+MindScribe is an innovative AI-powered assistant designed to revolutionize the way psychologists and psychotherapists handle documentation and session management. By leveraging advanced artificial intelligence and natural language processing, MindScribe transforms the traditionally time-consuming task of clinical note-taking into an efficient, automated process.
 
-**Note:** This project is in very early development and is a proof-of-concept for our Final Year Project.
+The platform addresses a critical pain point in mental health practice: the administrative burden that prevents therapists from focusing entirely on their clients. MindScribe listens to therapy session conversations, performs sophisticated sentiment analysis, and generates comprehensive SOAP (Subjective, Objective, Assessment, Plan) notes that meet clinical standards. Additionally, the system provides robust multilingual support, including Urdu-to-text transcription capabilities, ensuring accessibility for diverse client populations.
 
-## Features
+This comprehensive solution empowers mental health professionals to dedicate more time to patient care while maintaining detailed, accurate clinical records that support continuity of care and treatment planning.
 
--   **AI-Powered SOAP Note Generation:** Automatically creates SOAP notes based on sentiment analysis of therapy conversations.
--   **Urdu-to-Text Transcription:** Transcribes Urdu audio into text for multilingual therapy sessions.
--   **Helper Tool for Therapists:** Simplifies manual note-taking, allowing therapists to focus on clients.
+> **Note**: This project is currently in active development as part of our Final Year Project and represents a proof-of-concept for AI-assisted clinical documentation.
+
+---
+
+## Key Features
+
+* **AI-Powered SOAP Note Generation**: Automatically creates structured clinical notes following the SOAP methodology (Subjective, Objective, Assessment, Plan) based on intelligent analysis of therapy session content.
+* **Advanced Sentiment Analysis**: Employs sophisticated NLP to identify emotional patterns, therapeutic progress indicators, and significant clinical observations within session recordings.
+* **Multilingual Transcription Support**: Provides accurate Urdu-to-text transcription services, enabling therapists to work effectively with Urdu-speaking clients while maintaining comprehensive documentation.
+* **Clinical Workflow Integration**: Designed to seamlessly integrate into existing therapeutic workflows, reducing administrative overhead without disrupting established practice patterns.
+* **Real-time Processing**: Offers immediate generation of clinical notes, allowing therapists to review and refine documentation while session details remain fresh.
+
+---
 
 ## Project Status
 
-MindScribe is in early development. Features are experimental, and improvements are ongoing. Contributions and feedback are welcome!
+TherapEase is in early development. Features are experimental, and improvements are ongoing. Contributions and feedback are welcome!
 
 ## Prerequisites
 
-Before running MindScribe, ensure you have:
+Before running TherapEase, ensure you have:
 
 -   Python 3.13
 -   Node.js 22.x and npm (for the test frontend)
@@ -78,7 +88,7 @@ The test frontend is built with React and located in `test_frontend/mindscribe`.
 4.  **Access the Frontend:**
     Open your browser and navigate to the URL provided (typically `http://localhost:5173`).
 
-Boom! The server and frontend (if set up) are now running, and you can explore MindScribe!
+Boom! The server and frontend (if set up) are now running, and you can explore TherapEase!
 
 ## Project Structure
 
@@ -96,12 +106,14 @@ We welcome contributions! To contribute:
 
 ## License
 
-This project is licensed under the MIT License. See the `LICENSE` file for details.
+This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) file for details.
 
-## Contact
+---
+
+## Support and Contact
 
 For questions, suggestions, or feedback, open an issue on this repository or contact the maintainers.
 
 ---
 
-MindScribe - Simplifying therapy note-taking, one session at a time!
+TherapEase - Simplifying therapy note-taking, one session at a time!
