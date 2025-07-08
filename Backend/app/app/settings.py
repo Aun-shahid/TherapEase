@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     "rest_framework",                 # Django REST Framework
     "corsheaders",                    # For handling Cross-Origin Resource Sharing
     "rest_framework_simplejwt",       # For JSON Web Token authentication
+    "rest_framework_simplejwt.token_blacklist",  # JWT token blacklist
     "drf_spectacular",                # For OpenAPI (Swagger UI) documentation
     "storages",                       # For AWS S3 integration (if using)
 
@@ -140,7 +141,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = "en-us"
 
-TIME_ZONE = "UTC" # Consider setting to 'Asia/Karachi' if all users are local
+TIME_ZONE = "Asia/Karachi"
 
 USE_I18N = True
 
@@ -185,10 +186,12 @@ REST_FRAMEWORK = {
 
 # Django REST Framework Simple JWT settings
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60), # Access tokens valid for 60 minutes
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),   # Refresh tokens valid for 7 days
-    'ROTATE_REFRESH_TOKENS': True,                 # Generate new refresh token on refresh
-    'BLACKLIST_AFTER_ROTATION': True,              # Blacklist old refresh token
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+    'ROTATE_REFRESH_TOKENS': True,
+    'BLACKLIST_AFTER_ROTATION': True,
+    'UPDATE_LAST_LOGIN': True,
+    
     'ALGORITHM': 'HS256',
     'SIGNING_KEY': SECRET_KEY,
     'VERIFYING_KEY': None,
@@ -201,7 +204,6 @@ SIMPLE_JWT = {
     'AUTH_HEADER_NAME': 'HTTP_AUTHORIZATION',
     'USER_ID_FIELD': 'id',
     'USER_ID_CLAIM': 'user_id',
-    'USER_AUTHENTICATION_RULE': 'rest_framework_simplejwt.authentication.default_user_authentication_rule',
 
     'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
     'TOKEN_TYPE_CLAIM': 'token_type',
@@ -209,8 +211,9 @@ SIMPLE_JWT = {
 
     'JTI_CLAIM': 'jti',
 
-    'SLIDING_TOKEN_LIFETIME': timedelta(minutes=5),
-    'SLIDING_TOKEN_REFRESH_LIFETIME': timedelta(days=1),
+    'SLIDING_TOKEN_REFRESH_EXP_CLAIM': 'refresh_exp',
+    'SLIDING_TOKEN_LIFETIME': timedelta(minutes=60),
+    'SLIDING_TOKEN_REFRESH_LIFETIME': timedelta(days=7),
 }
 
 # CORS Headers settings
@@ -252,7 +255,7 @@ CELERY_RESULT_BACKEND = os.environ.get('CELERY_RESULT_BACKEND', 'redis://localho
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
-CELERY_TIMEZONE = 'UTC' # Or 'Asia/Karachi'
+CELERY_TIMEZONE = 'TIME_ZONE = "Asia/Karachi"'
 
 # AWS S3 Storage settings (using django-storages and boto3)
 # Only enable these if you are ready to use S3 for file storage

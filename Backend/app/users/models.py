@@ -11,6 +11,7 @@ class User(AbstractUser):
     ]
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    email = models.EmailField(unique=True)  # Add unique=True
     user_type = models.CharField(max_length=20, choices=USER_TYPES, default='patient')
     phone_number = models.CharField(max_length=20, blank=True, null=True)
     date_of_birth = models.DateField(blank=True, null=True)
@@ -19,6 +20,9 @@ class User(AbstractUser):
     is_active = models.BooleanField(default=True)
     email_verified = models.BooleanField(default=False)
     phone_verified = models.BooleanField(default=False)
+    
+    USERNAME_FIELD = 'email'
+    REQUIRED_FIELDS = ['username']
     
     class Meta:
         db_table = 'users'

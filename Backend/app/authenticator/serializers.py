@@ -1,0 +1,117 @@
+from rest_framework import serializers
+from django.contrib.auth import get_user_model
+from django.contrib.auth.password_validation import validate_password
+import uuid
+
+User = get_user_model()
+
+class LoginSerializer(serializers.Serializer):
+    email = serializers.EmailField(required=True)
+    password = serializers.CharField(required=True, write_only=True)
+
+
+class RegisterSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(
+        write_only=True, 
+        required=True, 
+        validators=[validate_password],
+        help_text="Password must be at least 8 characters long"
+    )
+    password_confirm = serializers.CharField(
+        write_only=True, 
+        required=True,
+        help_text="Must match the password field"
+    )
+    username = serializers.CharField(
+        required=True,
+        help_text="Unique username for the account"
+    )
+    email = serializers.EmailField(
+        required=True,
+        help_text="Valid email address"
+    )
+    first_name = serializers.CharField(
+        required=True,
+        help_text="User's first name"
+    )
+    last_name = serializers.CharField(
+        required=True,
+        help_text="User's last name"
+    )
+    user_type = serializers.ChoiceField(
+        choices=[('patient', 'Patient'), ('therapist', 'Therapist')],
+        default='patient',
+        help_text="Type of user account - either 'patient' or 'therapist'"
+    )
+    phone_number = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        help_text="User's phone number"
+    )
+    date_of_birth = serializers.DateField(
+        required=False,
+        allow_null=True,
+        help_text="User's date of birth in YYYY-MM-DD format"
+    )
+    
+    class Meta:
+        model = User
+        fields = ['username', 'email', 'password', 'password_confirm', 'first_name', 
+                  'last_name', 'user_type', 'phone_number', 'date_of_birth']
+    
+    def validate(self, attrs):
+        if attrs['password'] != attrs['password_confirm']:
+            raise serializers.ValidationError({"password": "Password fields didn't match."})
+        return attrs
+    
+    def create(self, validated_data):
+        validated_data.pop('password_confirm')
+        user = User.objects.create_user(
+            username=validated_data['username'],
+            email=validated_data['email'],
+            password=validated_data['password'],
+            first_name=validated_data.get('first_name', ''),
+            last_name=validated_data.get('last_name', ''),
+            user_type=validated_data.get('user_type', 'patient'),
+            phone_number=validated_data.get('phone_number', ''),
+            date_of_birth=validated_data.get('date_of_birth', None),
+        )
+        return user
+
+
+class UserProfileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ['id', 'username', 'email', 'first_name', 'last_name', 
+                  'user_type', 'phone_number', 'date_of_birth', 'email_verified']
+        read_only_fields = ['id', 'email', 'user_type', 'email_verified']
+
+
+class ChangePasswordSerializer(serializers.Serializer):
+    old_password = serializers.CharField(required=True)
+    new_password = serializers.CharField(required=True, validators=[validate_password])
+    new_password_confirm = serializers.CharField(required=True)
+
+    def validate(self, attrs):
+        if attrs['new_password'] != attrs['new_password_confirm']:
+            raise serializers.ValidationError({"new_password": "Password fields didn't match."})
+        return attrs
+
+
+class PasswordResetRequestSerializer(serializers.Serializer):
+    email = serializers.EmailField(required=True)
+
+
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    token = serializers.UUIDField(required=True)
+    password = serializers.CharField(required=True, validators=[validate_password])
+    password_confirm = serializers.CharField(required=True)
+    
+    def validate(self, attrs):
+        if attrs['password'] != attrs['password_confirm']:
+            raise serializers.ValidationError({"password": "Password fields didn't match."})
+        return attrs
+
+
+class EmailVerificationSerializer(serializers.Serializer):
+    token = serializers.UUIDField(required=True)

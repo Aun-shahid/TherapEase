@@ -23,10 +23,6 @@ urlpatterns = [
     # path("api/soap/", include("soap.urls")),
     # path("api/core/", include("core.urls")),
 
-    # JWT Authentication URLs
-    path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
-    path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
-
     # OpenAPI/Swagger UI URLs
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     # Only display Swagger UI in debug mode (controlled by SPECTACULAR_SETTINGS['SERVE_INCLUDE_SCHEMA'])
