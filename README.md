@@ -48,6 +48,7 @@ Ensure your system meets the following requirements:
 ### Project Configuration
 
 1. Navigate to the `Therapease/backend/` directory.
+
 2. Create a virtual environment:
 
    ```bash
@@ -77,18 +78,19 @@ Ensure your system meets the following requirements:
 * Ensure database credentials match PostgreSQL settings.
 
 ### Database Migration
+1. Navigate to `Therapease/backend/app`
 
-1. Generate migration files:
+2. Generate migration files:
 
    ```bash
    python manage.py makemigrations
    ```
-2. Apply migrations:
+3. Apply migrations:
 
    ```bash
    python manage.py migrate
    ```
-3. Create a superuser:
+4. Create a superuser:
 
    ```bash
    python manage.py createsuperuser
@@ -97,12 +99,13 @@ Ensure your system meets the following requirements:
 ### Server Launch
 
 Start the development server:
-
+fom  `Therapease/backend/app`
 ```bash
 python manage.py runserver
 ```
 
 * Backend available at: `http://127.0.0.1:8000/`
+* Swagger: `http://127.0.0.1:8000/api/schema/swagger-ui/`
 * Admin interface: `http://127.0.0.1:8000/admin/`
 
 ---
