@@ -227,7 +227,7 @@ EXCLUDED FROM STRUCTURE
 - venv/: Virtual environment (contains Python packages)
 - src_old/: Legacy code directory
 - __pycache__/: Python bytecode cache files (detailed above)
-
+I have made some changes - Mavia
 NOTES
 =====
 
