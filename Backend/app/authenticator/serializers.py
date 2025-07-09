@@ -115,3 +115,5 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
 
 class EmailVerificationSerializer(serializers.Serializer):
     token = serializers.UUIDField(required=True)
+
+

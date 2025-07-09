@@ -18,6 +18,7 @@ from .serializers import (
     ChangePasswordSerializer, PasswordResetRequestSerializer,
     PasswordResetConfirmSerializer, EmailVerificationSerializer
 )
+from users.models import TherapistProfile
 
 User = get_user_model()
 
@@ -44,7 +45,8 @@ class LoginView(APIView):
             if user is not None:
                 # Use token manager to create tokens
                 tokens = TokenManager.create_tokens(user, request)
-                return Response({
+                
+                response_data = {
                     **tokens,
                     'user': {
                         'id': str(user.id),
@@ -53,7 +55,13 @@ class LoginView(APIView):
                         'user_type': user.user_type,
                         'email_verified': user.email_verified
                     }
-                }, status=status.HTTP_200_OK)
+                }
+                
+                # Add therapist PIN if user is a therapist
+                if user.user_type == 'therapist' and hasattr(user, 'therapist_profile'):
+                    response_data['therapist_pin'] = user.therapist_profile.therapist_pin
+                
+                return Response(response_data, status=status.HTTP_200_OK)
             return Response({'detail': 'Invalid credentials.'}, status=status.HTTP_401_UNAUTHORIZED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -71,8 +79,8 @@ class RegisterView(generics.CreateAPIView):
             OpenApiExample(
                 'Registration Example',
                 value={
-                    "username": "aun2",
-                    "email": "user2@example.com",
+                    "username": "username",
+                    "email": "user@example.com",
                     "password": "string123",
                     "password_confirm": "string123",
                     "first_name": "string",
@@ -89,6 +97,16 @@ class RegisterView(generics.CreateAPIView):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
+        
+        # Create TherapistProfile with unique PIN if user is a therapist
+        therapist_pin = None
+        if user.user_type == 'therapist':
+            therapist_profile = TherapistProfile.objects.create(
+                user=user,
+                license_number='',  # Will be filled later
+                specialization='',  # Will be filled later
+            )
+            therapist_pin = therapist_profile.therapist_pin
         
         # Create verification token and send email
         token = uuid.uuid4()
@@ -111,15 +129,21 @@ class RegisterView(generics.CreateAPIView):
         # )
         
         print(f"Verification token for {user.email}: {token}")
+        if therapist_pin:
+            print(f"Therapist PIN for {user.email}: {therapist_pin}")
         
-        # Use token manager to create tokens
-        tokens = TokenManager.create_tokens(user, request)
         
-        return Response({
+        
+        response_data = {
             'user': UserProfileSerializer(user).data,
-            **tokens,
             'message': 'User registered successfully. Please verify your email.'
-        }, status=status.HTTP_201_CREATED)
+        }
+        
+        # Add therapist PIN to response if user is a therapist
+        if therapist_pin:
+            response_data['therapist_pin'] = therapist_pin
+        
+        return Response(response_data, status=status.HTTP_201_CREATED)
 
 
 class UserProfileView(generics.RetrieveUpdateAPIView):
