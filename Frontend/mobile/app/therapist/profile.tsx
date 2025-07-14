@@ -73,67 +73,53 @@
 // }
 
 
+
 import { useEffect, useState } from 'react';
 import {
   View,
   Text,
-  ScrollView,
   StyleSheet,
   SafeAreaView,
+  ScrollView,
   ActivityIndicator,
   TouchableOpacity,
+  Image,
   Alert,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
-import api from '../utils/api'; // Axios instance with token
+import api from '../utils/api';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function ProfileScreen() {
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchProfile = async () => {
+  useEffect(() => {
+    const fetchProfile = async () => {
+      try {
+        const res = await api.get('authenticator/profile/');
+        setProfile(res.data);
+      } catch (err) {
+        console.error('❌ Failed to fetch profile:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
 
-
-
-// You're using your custom api instance, which automatically:
-// Gets the access token from AsyncStorage.
-// Adds it to the request header as Authorization: Bearer <token>.
-// This means you're securely requesting the user's profile from a protected endpoint
-
-
-    try {
-      const res = await api.get('authenticator/profile/');
-      setProfile(res.data);
-    } catch (err) {
-      console.error('❌ Failed to fetch profile:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
+    fetchProfile();
+  }, []);
 
   const handleLogout = async () => {
-
-
-// When the user logs out, you:
-// Get the refresh_token from local storage.
-// Call the logout/ endpoint on your Django backend and send the refresh token.
-// This lets the server invalidate the token and end the session.
-
     try {
       const refresh = await AsyncStorage.getItem('refresh_token');
       if (refresh) {
         await api.post('authenticator/logout/', { refresh });
       }
 
+      await AsyncStorage.removeItem('access_token');
+      await AsyncStorage.removeItem('refresh_token');
 
-// After logout (or even if it fails), 
-// Clearing both access_token and refresh_token from local storage.
-// Redirecting the user to the login screen.
-// This prevents accidental reuse of tokens, even if the logout fails.
-
-
-      await AsyncStorage.clear();
       router.replace('/auth/login');
     } catch (e: any) {
       console.log('Logout error:', e?.response?.data || e.message);
@@ -142,15 +128,11 @@ export default function ProfileScreen() {
     }
   };
 
-  useEffect(() => {
-    fetchProfile();
-  }, []);
-
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#524f85" />
-        <Text style={styles.loadingText}>Fetching your profile...</Text>
+        <Text style={styles.loadingText}>Loading profile...</Text>
       </View>
     );
   }
@@ -158,34 +140,44 @@ export default function ProfileScreen() {
   return (
     <SafeAreaView style={styles.wrapper}>
       <ScrollView contentContainerStyle={styles.container}>
+        <Image
+          source={{ uri: 'https://i.ibb.co/F6MJsyK/profile-user.png' }}
+          style={styles.illustration}
+          resizeMode="contain"
+        />
+
         <Text style={styles.title}>👤 Your Profile</Text>
 
         {profile ? (
           <>
-            <View style={styles.infoBox}>
-              <Text style={styles.label}>ID:</Text>
+            <View style={styles.card}>
+              <Text style={styles.label}>ID</Text>
               <Text style={styles.value}>{profile.id}</Text>
             </View>
-            <View style={styles.infoBox}>
-              <Text style={styles.label}>Username:</Text>
+
+            <View style={styles.card}>
+              <Text style={styles.label}>Username</Text>
               <Text style={styles.value}>{profile.username}</Text>
             </View>
-            <View style={styles.infoBox}>
-              <Text style={styles.label}>Email:</Text>
+
+            <View style={styles.card}>
+              <Text style={styles.label}>Email</Text>
               <Text style={styles.value}>{profile.email}</Text>
             </View>
-            <View style={styles.infoBox}>
-              <Text style={styles.label}>User Type:</Text>
+
+            <View style={styles.card}>
+              <Text style={styles.label}>User Type</Text>
               <Text style={styles.value}>{profile.user_type}</Text>
             </View>
-
-            <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-              <Text style={styles.logoutText}>Logout</Text>
-            </TouchableOpacity>
           </>
         ) : (
-          <Text style={styles.errorText}>⚠️ Failed to load profile. Please try again.</Text>
+          <Text style={styles.errorText}>⚠️ Failed to load profile.</Text>
         )}
+
+        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+          <Ionicons name="log-out-outline" size={20} color="#fff" />
+          <Text style={styles.logoutButtonText}>Logout</Text>
+        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );
@@ -198,57 +190,67 @@ const styles = StyleSheet.create({
   },
   container: {
     padding: 24,
+    alignItems: 'center',
+  },
+  loadingContainer: {
+    flex: 1,
     justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  loadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: '#666',
+  },
+  illustration: {
+    width: 220,
+    height: 160,
+    marginBottom: 30,
   },
   title: {
-    fontSize: 28,
+    fontSize: 26,
     fontWeight: '700',
     color: '#524f85',
     textAlign: 'center',
-    marginBottom: 20,
+    marginBottom: 24,
   },
-  infoBox: {
+  card: {
+    width: '100%',
+    backgroundColor: '#f2f2f2',
+    borderRadius: 12,
+    padding: 16,
     marginBottom: 16,
-    borderBottomColor: '#eee',
-    borderBottomWidth: 1,
-    paddingBottom: 8,
+    elevation: 2,
   },
   label: {
     fontSize: 14,
-    fontWeight: '600',
     color: '#888',
+    marginBottom: 4,
   },
   value: {
     fontSize: 16,
     color: '#333',
   },
   logoutButton: {
-    backgroundColor: '#f44336',
-    paddingVertical: 14,
-    borderRadius: 10,
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#524f85',
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 10,
     marginTop: 30,
-    elevation: 2,
   },
-  logoutText: {
+  logoutButtonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
   },
   errorText: {
+    fontSize: 16,
     color: 'red',
-    textAlign: 'center',
-    fontSize: 16,
-    marginTop: 20,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: 10,
-    fontSize: 16,
-    color: '#666',
+    marginBottom: 16,
   },
 });
+
