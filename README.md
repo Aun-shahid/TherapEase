@@ -110,6 +110,30 @@ python manage.py runserver
 
 ---
 
+
+## Frontend Setup
+1. Open a new terminal and paste
+
+ ```bash
+   cd frontend/mobile
+   ```
+
+2. Install dependencies
+Then Paste the following in the terminal
+
+   ```bash
+   npm install
+   ```
+
+3. Start the app
+
+   ```bash
+   npx expo start
+   ```
+
+In the output, you'll find options  just press " a " response to it and you will find the frontend ready
+
+
 ## Project Architecture
 
 * **Backend System**: Django-based API server for AI processing, database operations, and clinical note generation.
