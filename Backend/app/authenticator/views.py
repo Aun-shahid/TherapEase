@@ -201,7 +201,18 @@ class LogoutView(APIView):
             refresh_token = request.data.get("refresh")
             if refresh_token:
                 # Use token manager to blacklist token
-                TokenManager.blacklist_token(refresh_token)
+
+
+
+
+                # made chnage
+                # TokenManager.blacklist_token(refresh_token)
+
+
+
+                # to this
+                TokenManager.blacklist_refresh_token(refresh_token)
+
             return Response({'detail': 'Logged out successfully.'}, status=status.HTTP_200_OK)
         except Exception as e:
             return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -244,6 +255,19 @@ class PasswordResetRequestView(APIView):
                 #     [user.email],
                 #     fail_silently=False,
                 # )
+
+
+                # trying for the frontend
+                frontend_url = "http://192.168.100.117:8081"
+                reset_link = f"{frontend_url}/auth/reset-confirm?token={token}"
+
+                send_mail(
+                    subject="🔐 Reset Your TherapEase Password",
+                    message=f"Hi {user.first_name},\n\nYou requested a password reset. Click the link below to set a new password:\n\n{reset_link}\n\nIf you didn't request this, you can ignore this email.",
+                    from_email="noreply@therapease.local",
+                    recipient_list=[user.email],
+                    fail_silently=False,
+                )
                 
                 print(f"Reset token for {user.email}: {token}")
                 

@@ -60,6 +60,7 @@ class RegisterSerializer(serializers.ModelSerializer):
                   'last_name', 'user_type', 'phone_number', 'date_of_birth']
     
     def validate(self, attrs):
+        
         if attrs['password'] != attrs['password_confirm']:
             raise serializers.ValidationError({"password": "Password fields didn't match."})
         return attrs

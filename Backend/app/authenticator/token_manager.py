@@ -52,7 +52,15 @@ class TokenManager:
         Blacklist a refresh token
         """
         try:
+
+
+            # below is orig
             refresh_token = RefreshToken.objects.get(token=token)
+
+
+            # i made the following change
+            #   refresh_token = RefreshToken.objects.get(token=token)
+
             refresh_token.is_blacklisted = True
             refresh_token.save()
             return True
@@ -81,56 +89,52 @@ class TokenManager:
     @staticmethod
     def refresh_token(old_token, request=None):
         """
-        Refresh a token and update the db entries dawg
+        Refresh a token and update the db entries
         """
-                
-
         try:
-            token_entry = RefreshToken.objects.get(token=token)
+            token_entry = RefreshToken.objects.get(token=old_token)
 
             if token_entry.is_blacklisted:
                 raise Exception("Token is blacklisted")
-                    
+
             if token_entry.expires_at < timezone.now():
                 raise Exception("Token has expired")
-                    
-            # now we blacklist the old token
+
+            # Blacklist the old token
             token_entry.is_blacklisted = True
             token_entry.save()
 
-
-
-            # make new tokens for the user
+            # Create new JWT tokens
             user = token_entry.user
             jwt_refresh = JWTRefreshToken.for_user(user)
-            access_token = str(new_jwt_refresh.access_token)
-            refresh_token = str(jwt_refresh)    
+            access_token = str(jwt_refresh.access_token)
+            refresh_token = str(jwt_refresh)
 
-            # set expiry
+            # Set expiry
             from django.conf import settings
             expires_at = timezone.now() + settings.SIMPLE_JWT['REFRESH_TOKEN_LIFETIME']
 
-
-            # Create new token record
+            # Use existing or updated request info
             device_info = token_entry.device_info
             ip_address = token_entry.ip_address
-                    
+
             if request:
                 device_info = request.META.get('HTTP_USER_AGENT', '')
                 ip_address = request.META.get('REMOTE_ADDR')
-                    
+
+            # Save new token in DB
             RefreshToken.objects.create(
-                    user=user,
-                    token=refresh_token,
-                    expires_at=expires_at,
-                    device_info=device_info,
-                    ip_address=ip_address
+                user=user,
+                token=refresh_token,
+                expires_at=expires_at,
+                device_info=device_info,
+                ip_address=ip_address
             )
-            
+
             return {
-                        'access': access_token,
-                        'refresh': refresh_token
-                    }
-                    
+                'access': access_token,
+                'refresh': refresh_token
+            }
+
         except RefreshToken.DoesNotExist:
             raise Exception("Token not found")
