@@ -136,10 +136,18 @@ CORS_ALLOWED_ORIGINS = [
 ]
 ```
 
-and 
+ 
 🔹 TherapEase/frontend/mobile/app/utils/config.ts
 ```bash
 export const BASE_URL = 'http://192.168.100.117:8000'; // ← Replace with your IP
+```
+
+and 
+🔹 TherapEase/frontend/mobile/app/utils/api.ts
+```bash
+const api = axios.create({
+  baseURL: 'http://192.168.100.117:8000/api/',   // ← Replace with your IP
+}); 
 ```
 
 
