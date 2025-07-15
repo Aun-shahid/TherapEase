@@ -5,7 +5,7 @@ export default function PatientTabs() {
   return (
     <Tabs>
       <Tabs.Screen name="dashboard" options={{ title: 'Dashboard' }} />
-      {/* You can add more like profile, settings later */}
+      
     </Tabs>
   );
 }

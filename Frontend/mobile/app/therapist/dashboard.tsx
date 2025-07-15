@@ -1,12 +1,3 @@
-// import { View, Text } from 'react-native';
-
-// export default function TherapistDashboard() {
-//   return (
-//     <View>
-//       <Text>Welcome Therapist!</Text>
-//     </View>
-//   );
-// }
 
 
 // app/patient/dashboard.tsx
@@ -61,11 +52,11 @@ export default function TherapistDashboard() {
   return (
     <SafeAreaView style={styles.wrapper}>
       <ScrollView contentContainerStyle={styles.container}>
-        <Image
+        {/* <Image
           source={{ uri: 'https://i.ibb.co/QfH4zST/patient-dashboard.png' }}
           style={styles.illustration}
           resizeMode="contain"
-        />
+        /> */}
 
         <Text style={styles.greeting}>👋 Welcome, {user.first_name}!</Text>
         <View style={styles.infoBox}>
