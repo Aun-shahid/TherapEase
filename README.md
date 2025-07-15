@@ -120,7 +120,7 @@ python manage.py runserver
    ```
    Copy your IPv4 Address (e.g., 192.168.100.117).
 
-Update the following files:
+Update the following files by adding this ip in the following areas in code :
 
 🔹 TherapEase/backend/app/app/settings.py
 
@@ -154,7 +154,7 @@ cd frontend/mobile
 ```bash
 npm install
 ```
-4. Have your emulator in Android Studio on
+4. Have your emulator in Android Studio on.
 
 5. In the same terminal , paste the following the command to launch the expo development server :
 
