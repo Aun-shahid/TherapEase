@@ -37,7 +37,7 @@ DEBUG = os.environ.get("DJANGO_DEBUG", "True").lower() == "true"
 # ALLOWED_HOSTS for production. Add your domain and Elastic Beanstalk URL here.
 # For development, if DEBUG is True, ['*'] is often used, but it's safer to specify.
 # ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "").split(",") if os.environ.get("DJANGO_ALLOWED_HOSTS") else []
-ALLOWED_HOSTS = ["localhost", "127.0.0.1", "192.168.100.117"]
+ALLOWED_HOSTS = ["localhost", "127.0.0.1", "192.168.100.117","192.168.1.13"]
 
 
 # Application definition
@@ -232,6 +232,8 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",        # optional for web
     "http://localhost:8081",
     "http://127.0.0.1:8081",
+    "http://192.168.1.13:8081",
+    "http://192.168.1.13:19006"
 ]
 
 # If you need to allow all origins during early development (NOT for production):
