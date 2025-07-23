@@ -50,6 +50,12 @@ export default function RequestResetScreen() {
           /> */}
 
           <Text style={styles.title}>Forgot Your Password?</Text>
+
+          <Image
+          style={styles.img}
+          source={require('../../assets/images/Forgot.png')}
+          resizeMode='contain'
+          ></Image>
           <Text style={styles.subtitle}>
             Enter your email address and we will send you a link to reset your password.
           </Text>
@@ -84,9 +90,10 @@ const styles = StyleSheet.create({
   wrapper: {
     flex: 1,
     backgroundColor: '#ffffff',
+    padding:15
   },
   container: {
-    paddingTop: 40,
+    paddingTop: 70,
     paddingHorizontal: 24,
     justifyContent: 'center',
     alignItems: 'center',
@@ -96,15 +103,20 @@ const styles = StyleSheet.create({
     height: 180,
     marginBottom: 20,
   },
+  img:{
+    width:300,
+    height:500,
+    
+  },
   title: {
-    fontSize: 28,
+    fontSize: 30,
     fontWeight: '700',
     color: '#524f85',
     textAlign: 'center',
-    marginBottom: 8,
+    marginBottom: 2,
   },
   subtitle: {
-    fontSize: 15,
+    fontSize: 17,
     color: '#666',
     textAlign: 'center',
     marginBottom: 24,
@@ -127,7 +139,7 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    fontSize: 16,
+    fontSize: 17,
     color: '#333',
   },
   resetButton: {
@@ -140,13 +152,13 @@ const styles = StyleSheet.create({
   },
   resetButtonText: {
     color: '#fff',
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '600',
   },
   linkText: {
     marginTop: 24,
     color: '#524f85',
-    fontSize: 14,
+    fontSize: 16,
     textAlign: 'center',
   },
 });

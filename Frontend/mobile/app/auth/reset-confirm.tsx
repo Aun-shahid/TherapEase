@@ -32,17 +32,19 @@ export default function ResetConfirmScreen() {
   return (
     <ScrollView contentContainerStyle={styles.scrollContainer}>
       <View style={styles.container}>
+        <Text style={styles.title}>Reset Your Password</Text>
         {/* Optional Therapy Illustration */}
         <Image
-          source={{
-            uri: 'https://cdn-icons-png.flaticon.com/512/4089/4089782.png', // soft therapy-style image
-          }}
+          source={require('../../assets/images/reset1.png')}
           style={styles.image}
           resizeMode="contain"
         />
 
-        <Text style={styles.title}>Reset Your Password</Text>
+
         <Text style={styles.subtitle}>Please choose a new secure password</Text>
+        <View style={{ width: '100%', paddingHorizontal: 30 }}>
+          <Text style={styles.head}>Enter new password</Text>
+        </View>
 
         <View style={styles.inputBox}>
           <Ionicons name="lock-closed-outline" size={20} color="#524f85" />
@@ -54,6 +56,10 @@ export default function ResetConfirmScreen() {
             placeholderTextColor="#aaa"
             style={styles.input}
           />
+        </View>
+
+        <View style={{ width: '100%', paddingHorizontal: 30 }}>
+          <Text style={styles.head}>Re-enter new password</Text>
         </View>
 
         <View style={styles.inputBox}>
@@ -93,13 +99,23 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#524f85',
     textAlign: 'center',
-    marginTop: 20,
+
   },
   subtitle: {
     fontSize: 16,
     color: '#777',
     textAlign: 'center',
     marginVertical: 10,
+  },
+  head: {
+    fontSize: 18,
+    color: '#524f85',
+    fontWeight: '500',
+    marginTop: 8,
+    alignSelf: 'flex-start',
+    textAlign: 'left'
+
+
   },
   inputBox: {
     flexDirection: 'row',
@@ -129,13 +145,13 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '600',
   },
   image: {
-    width: 150,
-    height: 150,
-    marginBottom: 20,
+    width: 400,
+    height: 400,
+    marginBottom: 10,
   },
 });
 

@@ -86,6 +86,7 @@ const styles = StyleSheet.create({
     padding: 24,
     justifyContent: 'center',
     alignItems: 'center',
+    marginTop:50
   },
   illustration: {
     width: 220,
