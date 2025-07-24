@@ -1,6 +1,4 @@
-
-
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,71 +7,31 @@ import {
   SafeAreaView,
   ActivityIndicator,
   TouchableOpacity,
-  Alert,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { router } from 'expo-router';
-import api from '../utils/api'; // Axios instance with token
+import { useAuthContext } from '../../contexts/AuthContext';
 
 export default function ProfileScreen() {
-  const [profile, setProfile] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-
-  const fetchProfile = async () => {
-
-
-
-// You're using your custom api instance, which automatically:
-// Gets the access token from AsyncStorage.
-// Adds it to the request header as Authorization: Bearer <token>.
-// This means you're securely requesting the user's profile from a protected endpoint
-
-
-    try {
-      const res = await api.get('authenticator/profile/');
-      setProfile(res.data);
-    } catch (err) {
-      console.error('❌ Failed to fetch profile:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleLogout = async () => {
-
-
-// When the user logs out, you:
-// Get the refresh_token from local storage.
-// Call the logout/ endpoint on your Django backend and send the refresh token.
-// This lets the server invalidate the token and end the session.
-
-    try {
-      const refresh = await AsyncStorage.getItem('refresh_token');
-      if (refresh) {
-        await api.post('authenticator/logout/', { refresh });
-      }
-
-
-// After logout (or even if it fails), 
-// Clearing both access_token and refresh_token from local storage.
-// Redirecting the user to the login screen.
-// This prevents accidental reuse of tokens, even if the logout fails.
-
-
-      await AsyncStorage.clear();
-      router.replace('/auth/login');
-    } catch (e: any) {
-      console.log('Logout error:', e?.response?.data || e.message);
-      await AsyncStorage.clear();
-      router.replace('/auth/login');
-    }
-  };
+  const { 
+    profile, 
+    profileLoading, 
+    error, 
+    fetchProfile, 
+    logout 
+  } = useAuthContext();
 
   useEffect(() => {
     fetchProfile();
   }, []);
 
-  if (loading) {
+  const handleLogout = async () => {
+    try {
+      await logout();
+    } catch (e: any) {
+      console.log('Logout error:', e?.message);
+    }
+  };
+
+  if (profileLoading) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#524f85" />
@@ -94,8 +52,8 @@ export default function ProfileScreen() {
               <Text style={styles.value}>{profile.id}</Text>
             </View>
             <View style={styles.infoBox}>
-              <Text style={styles.label}>Username:</Text>
-              <Text style={styles.value}>{profile.username}</Text>
+              <Text style={styles.label}>Name:</Text>
+              <Text style={styles.value}>{profile.first_name} {profile.last_name}</Text>
             </View>
             <View style={styles.infoBox}>
               <Text style={styles.label}>Email:</Text>
@@ -104,6 +62,10 @@ export default function ProfileScreen() {
             <View style={styles.infoBox}>
               <Text style={styles.label}>User Type:</Text>
               <Text style={styles.value}>{profile.user_type}</Text>
+            </View>
+            <View style={styles.infoBox}>
+              <Text style={styles.label}>Verified:</Text>
+              <Text style={styles.value}>{profile.is_verified ? 'Yes' : 'No'}</Text>
             </View>
 
             <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>

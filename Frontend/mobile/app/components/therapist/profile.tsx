@@ -2,7 +2,7 @@
 
 
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import {
   View,
   Text,
@@ -14,49 +14,31 @@ import {
   Image,
   Alert,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { router } from 'expo-router';
-import api from '../utils/api';
+import { useAuthContext } from '../../contexts/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 
 export default function ProfileScreen() {
-  const [profile, setProfile] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const { 
+    profile, 
+    profileLoading, 
+    error, 
+    fetchProfile, 
+    logout 
+  } = useAuthContext();
 
   useEffect(() => {
-    const fetchProfile = async () => {
-      try {
-        const res = await api.get('authenticator/profile/');
-        setProfile(res.data);
-      } catch (err) {
-        console.error('❌ Failed to fetch profile:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchProfile();
   }, []);
 
   const handleLogout = async () => {
     try {
-      const refresh = await AsyncStorage.getItem('refresh_token');
-      if (refresh) {
-        await api.post('authenticator/logout/', { refresh });
-      }
-
-      await AsyncStorage.removeItem('access_token');
-      await AsyncStorage.removeItem('refresh_token');
-
-      router.replace('/auth/login');
+      await logout();
     } catch (e: any) {
-      console.log('Logout error:', e?.response?.data || e.message);
-      await AsyncStorage.clear();
-      router.replace('/auth/login');
+      console.log('Logout error:', e?.message);
     }
   };
 
-  if (loading) {
+  if (profileLoading) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#524f85" />
@@ -84,8 +66,8 @@ export default function ProfileScreen() {
             </View>
 
             <View style={styles.card}>
-              <Text style={styles.label}>Username</Text>
-              <Text style={styles.value}>{profile.username}</Text>
+              <Text style={styles.label}>Name</Text>
+              <Text style={styles.value}>{profile.first_name} {profile.last_name}</Text>
             </View>
 
             <View style={styles.card}>
@@ -96,6 +78,11 @@ export default function ProfileScreen() {
             <View style={styles.card}>
               <Text style={styles.label}>User Type</Text>
               <Text style={styles.value}>{profile.user_type}</Text>
+            </View>
+
+            <View style={styles.card}>
+              <Text style={styles.label}>Verified</Text>
+              <Text style={styles.value}>{profile.is_verified ? 'Yes' : 'No'}</Text>
             </View>
           </>
         ) : (

@@ -34,7 +34,7 @@ export default function Splash() {
           }}>
 
           <Image
-        source={require('../../assets/images/therap.jpg')} // Replace with your image
+        source={require('../../../assets/images/therap.jpg')} // Replace with your image
         style={styles.bgImage}
         resizeMode="contain"
       />
@@ -51,7 +51,7 @@ export default function Splash() {
         }}>
 
           <Image
-          source={require('../../assets/images/pat.png')}
+          source={require('../../../assets/images/pat.png')}
           style={styles.bgImage}
           resizeMode='contain'
           ></Image>

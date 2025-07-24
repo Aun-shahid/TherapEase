@@ -8,6 +8,9 @@
     "scheme": "mobile",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+    "extra": {
+      "BACKEND_URL": "http://192.168.1.8:8000"
+    },
     "ios": {
       "supportsTablet": true
     },

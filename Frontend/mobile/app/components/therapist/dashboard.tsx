@@ -1,7 +1,7 @@
 
 
-// app/patient/dashboard.tsx
-import { useEffect, useState } from 'react';
+// app/therapist/dashboard.tsx
+import { useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,27 +12,21 @@ import {
   TouchableOpacity,
   Image,
 } from 'react-native';
-import api from '../utils/api'; // Axios instance with token
+import { useAuthContext } from '../../contexts/AuthContext';
 import { router } from 'expo-router';
 
 export default function TherapistDashboard() {
-  const [user, setUser] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const { 
+    user, 
+    profileLoading, 
+    fetchProfile 
+  } = useAuthContext();
 
   useEffect(() => {
-    (async () => {
-      try {
-        const res = await api.get('authenticator/profile/');
-        setUser(res.data);
-      } catch (e) {
-        console.error('❌ Failed to fetch user profile:', e);
-      } finally {
-        setLoading(false);
-      }
-    })();
+    fetchProfile();
   }, []);
 
-  if (loading) {
+  if (profileLoading) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#524f85" />
