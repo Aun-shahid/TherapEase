@@ -24,24 +24,53 @@ export default function PatientDashboard() {
     fetchProfile();
   }, []);
 
+  //console.log(user);
+
+  // if (profileLoading) {
+  //   return (
+  //     <View style={styles.loadingContainer}>
+  //       <ActivityIndicator size="large" color="#524f85" />
+  //       <Text style={styles.loadingText}>Loading your profile...</Text>
+  //     </View>
+  //   );
+  // }
+
+  // if (!user) {
+  //   return (
+  //     <View style={styles.errorContainer}>
+  //       <Text style={styles.errorText}>
+  //         ⚠️ Failed to load profile. Try logging in again.
+  //       </Text>
+  //     </View>
+  //   );
+  // }
   if (profileLoading) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#524f85" />
-        <Text style={styles.loadingText}>Loading your profile...</Text>
+        <Text style={styles.loadingText}>Loading your dashboard...</Text>
       </View>
     );
   }
-
+  
+  
   if (!user) {
     return (
       <View style={styles.errorContainer}>
         <Text style={styles.errorText}>
           ⚠️ Failed to load profile. Try logging in again.
         </Text>
+        <TouchableOpacity
+          style={styles.btn}
+          onPress={() => {
+            router.push('../auth/login');
+          }}>
+          <Text style={styles.btnlabel}>Back to Login</Text>
+        </TouchableOpacity>
       </View>
     );
   }
+  
 
   return (
     <SafeAreaView style={styles.wrapper}>
@@ -126,4 +155,22 @@ const styles = StyleSheet.create({
     fontSize: 16,
     textAlign: 'center',
   },
+  btn:{
+        width:200,
+        backgroundColor:'#524f85',
+        
+        borderRadius:50,
+        paddingVertical:12,
+        paddingHorizontal:10,
+       // padding:9,
+        alignContent:'center',
+        alignItems:'center',
+        marginTop:30
+    },
+    btnlabel:{
+        color:'white',
+        fontSize:22,
+        fontWeight:600,
+        
+    },
 });

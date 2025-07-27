@@ -13,9 +13,13 @@ import {
   TouchableOpacity,
   Image,
   Alert,
+  Pressable,
 } from 'react-native';
 import { useAuthContext } from '../../contexts/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
+import { MaterialIcons, FontAwesome } from '@expo/vector-icons';
+import AntDesign from '@expo/vector-icons/AntDesign';
+import { router } from 'expo-router';
 
 export default function ProfileScreen() {
   const { 
@@ -49,12 +53,24 @@ export default function ProfileScreen() {
 
   return (
     <SafeAreaView style={styles.wrapper}>
+      <View>
+                <Pressable 
+                  style={styles.backButton} 
+                  onPress={() => router.push('./dashboard')}
+                  
+                >
+                  <AntDesign name="arrowleft" size={24} color="black" />
+                </Pressable>
+              </View>
       <ScrollView contentContainerStyle={styles.container}>
+
         {/* <Image
           source={{ uri: 'https://i.ibb.co/F6MJsyK/profile-user.png' }}
           style={styles.illustration}
           resizeMode="contain"
         /> */}
+
+        
 
         <Text style={styles.title}>👤 Your Profile</Text>
 
@@ -168,5 +184,12 @@ const styles = StyleSheet.create({
     color: 'red',
     marginBottom: 16,
   },
+  backButton: {
+    position: 'absolute',
+    top: 50,
+    left: 20,
+    zIndex: 10,
+    padding: 10,
+  }
 });
 

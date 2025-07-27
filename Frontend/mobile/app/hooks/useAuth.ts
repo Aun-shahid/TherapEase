@@ -203,11 +203,11 @@ export const useAuth = (): AuthState & AuthActions => {
       await authService.logout();
       await clearAuthData();
       
-      router.push('./login');
+      router.push('../auth/login');
     } catch (error) {
       // Even if logout fails, clear local data
       await clearAuthData();
-      router.push('./login');
+      router.push('../auth/login');
     }
   };
 
@@ -274,12 +274,15 @@ export const useAuth = (): AuthState & AuthActions => {
       
       const profile = await profileService.getProfile();
       
+      
       updateState({ 
         profile, 
+        user:profile,
         profileLoading: false,
         error: null 
       });
     } catch (error) {
+      console.error('Error fetching profile:', error);
       updateState({ 
         profileLoading: false,
         error: error as AuthError 
