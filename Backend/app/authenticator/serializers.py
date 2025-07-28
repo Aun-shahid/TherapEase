@@ -10,62 +10,114 @@ class LoginSerializer(serializers.Serializer):
     password = serializers.CharField(required=True, write_only=True)
 
 
+# class RegisterSerializer(serializers.ModelSerializer):
+#     password = serializers.CharField(
+#         write_only=True, 
+#         required=True, 
+#         validators=[validate_password],
+#         help_text="Password must be at least 8 characters long"
+#     )
+#     password_confirm = serializers.CharField(
+#         write_only=True, 
+#         required=True,
+#         help_text="Must match the password field"
+#     )
+#     username = serializers.CharField(
+#         required=True,
+#         help_text="Unique username for the account"
+#     )
+#     email = serializers.EmailField(
+#         required=True,
+#         help_text="Valid email address"
+#     )
+#     first_name = serializers.CharField(
+#         required=True,
+#         help_text="User's first name"
+#     )
+#     last_name = serializers.CharField(
+#         required=True,
+#         help_text="User's last name"
+#     )
+#     user_type = serializers.ChoiceField(
+#         choices=[('patient', 'Patient'), ('therapist', 'Therapist')],
+#         default='patient',
+#         help_text="Type of user account - either 'patient' or 'therapist'"
+#     )
+#     phone_number = serializers.CharField(
+#         required=False,
+#         allow_blank=True,
+#         help_text="User's phone number"
+#     )
+#     date_of_birth = serializers.DateField(
+#         required=False,
+#         allow_null=True,
+#         help_text="User's date of birth in YYYY-MM-DD format"
+#     )
+    
+#     class Meta:
+#         model = User
+#         fields = ['username', 'email', 'password', 'password_confirm', 'first_name', 
+#                   'last_name', 'user_type', 'phone_number', 'date_of_birth']
+    
+#     def validate(self, attrs):
+        
+#         if attrs['password'] != attrs['password_confirm']:
+#             raise serializers.ValidationError({"password": "Password fields didn't match."})
+#         return attrs
+    
+#     def create(self, validated_data):
+#         validated_data.pop('password_confirm')
+#         user = User.objects.create_user(
+#             username=validated_data['username'],
+#             email=validated_data['email'],
+#             password=validated_data['password'],
+#             first_name=validated_data.get('first_name', ''),
+#             last_name=validated_data.get('last_name', ''),
+#             user_type=validated_data.get('user_type', 'patient'),
+#             phone_number=validated_data.get('phone_number', ''),
+#             date_of_birth=validated_data.get('date_of_birth', None),
+#         )
+#         return user
+
+
+
+
+
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(
         write_only=True, 
         required=True, 
-        validators=[validate_password],
-        help_text="Password must be at least 8 characters long"
+        validators=[validate_password]
     )
-    password_confirm = serializers.CharField(
-        write_only=True, 
-        required=True,
-        help_text="Must match the password field"
-    )
-    username = serializers.CharField(
-        required=True,
-        help_text="Unique username for the account"
-    )
-    email = serializers.EmailField(
-        required=True,
-        help_text="Valid email address"
-    )
-    first_name = serializers.CharField(
-        required=True,
-        help_text="User's first name"
-    )
-    last_name = serializers.CharField(
-        required=True,
-        help_text="User's last name"
-    )
-    user_type = serializers.ChoiceField(
-        choices=[('patient', 'Patient'), ('therapist', 'Therapist')],
-        default='patient',
-        help_text="Type of user account - either 'patient' or 'therapist'"
-    )
-    phone_number = serializers.CharField(
-        required=False,
-        allow_blank=True,
-        help_text="User's phone number"
-    )
-    date_of_birth = serializers.DateField(
-        required=False,
-        allow_null=True,
-        help_text="User's date of birth in YYYY-MM-DD format"
-    )
+    password_confirm = serializers.CharField(write_only=True, required=True)
     
+    license_number = serializers.CharField(required=False, allow_blank=True)
+    specialization = serializers.CharField(required=False, allow_blank=True)
+
     class Meta:
         model = User
         fields = ['username', 'email', 'password', 'password_confirm', 'first_name', 
-                  'last_name', 'user_type', 'phone_number', 'date_of_birth']
-    
+                  'last_name', 'user_type', 'phone_number', 'date_of_birth',
+                  'license_number', 'specialization']
+
     def validate(self, attrs):
         if attrs['password'] != attrs['password_confirm']:
-            raise serializers.ValidationError({"password": "Password fields didn't match."})
+            raise serializers.ValidationError({"password": "Passwords do not match."})
+
+        if attrs['user_type'] == 'therapist':
+            if not attrs.get('license_number'):
+                raise serializers.ValidationError({"license_number": "This field is required for therapists."})
+            if not attrs.get('specialization'):
+                raise serializers.ValidationError({"specialization": "This field is required for therapists."})
+
         return attrs
-    
+
     def create(self, validated_data):
+        # Remove fields not in the User model
+        license_number = validated_data.pop('license_number', None)
+        specialization = validated_data.pop('specialization', None)
         validated_data.pop('password_confirm')
+
         user = User.objects.create_user(
             username=validated_data['username'],
             email=validated_data['email'],
@@ -76,8 +128,14 @@ class RegisterSerializer(serializers.ModelSerializer):
             phone_number=validated_data.get('phone_number', ''),
             date_of_birth=validated_data.get('date_of_birth', None),
         )
-        return user
 
+        # TherapistProfile will be created in the view, not here.
+        user._extra_profile_data = {
+            "license_number": license_number,
+            "specialization": specialization
+        }
+
+        return user
 
 class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:

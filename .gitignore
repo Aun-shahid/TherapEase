@@ -129,3 +129,63 @@ dmypy.json
 # PyCharm
 .idea/
 *.iml
+
+
+# ========================
+# React Native Frontend
+# ========================
+
+# Node modules
+**/node_modules/
+
+# Build files and cache
+.expo/
+.expo-shared/
+web-build/
+dist/
+build/
+*.bundle
+
+# Metro cache
+.metro-cache/
+.cache/
+
+# System files
+*.DS_Store
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+
+# iOS/Android platform-specific files (if ever ejected)
+ios/
+android/
+
+# Test artifacts
+*.test.js.snap
+__tests__/
+__snapshots__/
+
+# Environment config
+.env
+.env.local
+.env.development
+.env.production
+.env.*.local
+
+# React Native/Expo config
+*.keystore
+*.jks
+*.p8
+*.pem
+*.cert
+
+# VS Code (already added but listed here for frontend devs)
+.vscode/
+
+# Misc
+*.tgz
+yarn-error.log
+npm-debug.log*
+
