@@ -37,12 +37,8 @@ export default function VerifyEmailScreen() {
 
     try {
       await verifyEmail({ token: token.trim() });
-      Alert.alert(
-        '✅ Success',
-        AUTH_MESSAGES.EMAIL_VERIFIED,
-        [{ text: 'OK', onPress: () => router.push('./login') }]
-      );
-    } catch (err) {
+      router.push('./email-verified');
+    } catch {
       Alert.alert(
         '❌ Verification Failed',
         error?.message || AUTH_MESSAGES.EMAIL_VERIFICATION_FAILED,

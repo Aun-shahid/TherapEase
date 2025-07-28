@@ -186,7 +186,7 @@ export default function LoginScreen() {
             disabled={isLoading}
           >
             <Text style={[styles.linkText, isLoading && styles.linkTextDisabled]}>
-              Don't have an account? Register
+              Dont have an account? Register
             </Text>
           </TouchableOpacity>
 

@@ -333,6 +333,7 @@ class PasswordResetRequestView(APIView):
 
                 # trying for the frontend
                 frontend_url = "http://192.168.100.117:8081"
+           
                 reset_link = f"{frontend_url}/auth/reset-confirm?token={token}"
 
                 send_mail(

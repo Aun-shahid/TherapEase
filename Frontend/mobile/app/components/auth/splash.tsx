@@ -30,7 +30,7 @@ export default function Splash() {
         <TouchableOpacity style={styles.card}
           onPress={async () => {
             await AsyncStorage.setItem('selected_role', 'therapist');
-            router.push('./login');
+            router.push('../onboarding/therapistintro1');
           }}>
 
           <Image
@@ -48,7 +48,7 @@ export default function Splash() {
 
         <TouchableOpacity style={styles.card}
         onPress={async()=>{await AsyncStorage.setItem('selected_role','patient');
-          router.push('./login');
+          router.push('../onboarding/patientintro1');
         }}>
 
           <Image
