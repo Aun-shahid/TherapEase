@@ -1,11 +1,17 @@
 // app/utils/api.ts
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { BASE_URL } from '../config';
+
+
+//console.log(' BASE_URL:', BASE_URL);
 
 const api = axios.create({
-  baseURL: 'http://192.168.100.117:8000/api/',
+  baseURL: `${BASE_URL}/api/`,
+  timeout: 10000,
 });
 
+// Request interceptor to add auth token
 api.interceptors.request.use(async (config) => {
   const token = await AsyncStorage.getItem('access_token');
   if (token) {
@@ -14,19 +20,24 @@ api.interceptors.request.use(async (config) => {
   return config;
 });
 
+// Response interceptor to handle token refresh
 api.interceptors.response.use(
-  res => res,
-  async err => {
-    const originalRequest = err.config;
+  (response) => response,
+  async (error) => {
+    const originalRequest = error.config;
 
-    if (err.response?.status === 401 && !originalRequest._retry) {
+    if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
 
       const refresh = await AsyncStorage.getItem('refresh_token');
-      if (!refresh) return Promise.reject(err);
+      if (!refresh) {
+        // Clear tokens and redirect to login
+        await AsyncStorage.multiRemove(['access_token', 'refresh_token']);
+        return Promise.reject(error);
+      }
 
       try {
-        const response = await axios.post('http://192.168.100.117:8000/api/authenticator/token/refresh/', {
+        const response = await axios.post(`${BASE_URL}/api/authenticator/token/refresh/`, {
           refresh,
         });
 
@@ -35,13 +46,15 @@ api.interceptors.response.use(
         await AsyncStorage.setItem('refresh_token', newRefresh);
 
         originalRequest.headers.Authorization = `Bearer ${access}`;
-        return api(originalRequest); // retry original request
-      } catch (refreshErr) {
-        return Promise.reject(refreshErr);
+        return api(originalRequest);
+      } catch (refreshError) {
+        // Clear tokens and redirect to login
+        await AsyncStorage.multiRemove(['access_token', 'refresh_token']);
+        return Promise.reject(refreshError);
       }
     }
 
-    return Promise.reject(err);
+    return Promise.reject(error);
   }
 );
 

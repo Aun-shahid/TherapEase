@@ -37,7 +37,7 @@ DEBUG = os.environ.get("DJANGO_DEBUG", "True").lower() == "true"
 # ALLOWED_HOSTS for production. Add your domain and Elastic Beanstalk URL here.
 # For development, if DEBUG is True, ['*'] is often used, but it's safer to specify.
 # ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "").split(",") if os.environ.get("DJANGO_ALLOWED_HOSTS") else []
-ALLOWED_HOSTS = ["localhost", "127.0.0.1", "192.168.100.117"]
+ALLOWED_HOSTS = ["*"]
 
 
 # Application definition
@@ -221,24 +221,13 @@ SIMPLE_JWT = {
 # IMPORTANT: In production, restrict CORS_ALLOWED_ORIGINS to your actual frontend domain(s)!
 # CORS_ALLOWED_ORIGINS = [
 #     os.environ.get("FRONTEND_URL", "http://localhost:3000"),  # Read from environment variable
-#     "http://localhost:8081",  # For React Native development server
-#     "http://127.0.0.1:8081",
 #     # Add other local development origins if needed (e.g., for web testing)
 # ]
 
-CORS_ALLOWED_ORIGINS = [
-    "http://192.168.100.117:8081",  # Expo Go / emulator
-    "http://192.168.100.117:19006",  # (if using Expo web)
-    "http://localhost:3000",        # optional for web
-    "http://localhost:8081",
-    "http://127.0.0.1:8081",
-]
 
-# If you need to allow all origins during early development (NOT for production):
-# CORS_ALLOW_ALL_ORIGINS = True
-# CORS_ALLOWED_ORIGIN_REGEXES = [
-#     r"^https?://.*\.yourdomain\.com$", # Example for production subdomains
-# ]
+# Enable this setting to allow requests from all origins
+CORS_ALLOW_ALL_ORIGINS = True
+
 CORS_ALLOW_CREDENTIALS = True # Allow cookies/auth headers to be sent cross-origin
 
 # DRF Spectacular (OpenAPI/Swagger) settings

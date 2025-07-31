@@ -110,29 +110,69 @@ python manage.py runserver
 
 ---
 
+## Frontend Instructions
 
-## Frontend Setup
-1. Open a new terminal and paste
+ To allow your emulator or physical device to connect to the Django backend on your local machine:
 
- ```bash
-   cd frontend/mobile
-   ```
-
-2. Install dependencies
-Then Paste the following in the terminal
-
+1. Open **Command Prompt (CMD)** and run:
    ```bash
-   npm install
+   ipconfig
    ```
+   Copy your IPv4 Address (e.g., 192.168.100.117).
 
-3. Start the app
+Update the following files by adding this ip in the following areas in code :
 
-   ```bash
-   npx expo start
-   ```
+🔹 TherapEase/backend/app/app/settings.py
 
-In the output, you'll find options  just press " a " response to it and you will find the frontend ready
+```bash
+ALLOWED_HOSTS = ["localhost", "127.0.0.1", "192.168.100.117"]
 
+CORS_ALLOWED_ORIGINS = [
+    "http://192.168.100.117:8081",
+    "http://192.168.100.117:19006",
+    "http://localhost:3000",
+    "http://localhost:8081",
+    "http://127.0.0.1:8081",
+]
+```
+
+ 
+🔹 TherapEase/frontend/mobile/app/utils/config.ts
+```bash
+export const BASE_URL = 'http://192.168.100.117:8000'; // ← Replace with your IP
+```
+
+and 
+🔹 TherapEase/frontend/mobile/app/utils/api.ts
+```bash
+const api = axios.create({
+  baseURL: 'http://192.168.100.117:8000/api/',   // ← Replace with your IP
+}); 
+```
+
+
+2. From the project root, open a new terminal and run:
+
+```bash
+cd frontend/mobile
+```
+
+3. In the terminal, paste the following command 
+
+```bash
+npm install
+```
+4. Have your emulator in Android Studio on.
+
+5. In the same terminal , paste the following the command to launch the expo development server :
+
+```bash
+npx expo start
+```
+Then:
+Press a to open the app on an Android emulator.
+
+And now your frontend is all setup. 
 
 ## Project Architecture
 

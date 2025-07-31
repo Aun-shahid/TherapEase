@@ -66,10 +66,91 @@ class LoginView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+# Radia chnages
+# class RegisterView(generics.CreateAPIView):
+#     serializer_class = RegisterSerializer
+#     permission_classes = [permissions.AllowAny]
+    
+#     @extend_schema(
+#         request=RegisterSerializer,
+#         responses={201: UserProfileSerializer},
+#         summary="User Registration",
+#         description="Register a new user account.",
+#         examples=[
+#             OpenApiExample(
+#                 'Registration Example',
+#                 value={
+#                     "username": "username",
+#                     "email": "user@example.com",
+#                     "password": "string123",
+#                     "password_confirm": "string123",
+#                     "first_name": "string",
+#                     "last_name": "string",
+#                     "user_type": "patient",
+#                     "phone_number": "string",
+#                     "date_of_birth": "2025-07-08"
+#                 },
+#                 request_only=True
+#             )
+#         ]
+#     )
+#     def create(self, request, *args, **kwargs):
+#         serializer = self.get_serializer(data=request.data)
+#         serializer.is_valid(raise_exception=True)
+#         user = serializer.save()
+        
+#         # Create TherapistProfile with unique PIN if user is a therapist
+#         therapist_pin = None
+#         if user.user_type == 'therapist':
+#             therapist_profile = TherapistProfile.objects.create(
+#                 user=user,
+#                 license_number='',  # Will be filled later
+#                 specialization='',  # Will be filled later
+#             )
+#             therapist_pin = therapist_profile.therapist_pin
+        
+#         # Create verification token and send email
+#         token = uuid.uuid4()
+#         expires_at = timezone.now() + timedelta(days=1)
+        
+#         EmailVerificationToken.objects.create(
+#             user=user,
+#             token=token,
+#             expires_at=expires_at
+#         )
+        
+#         # In production, send actual email
+#         # verification_link = f"{settings.FRONTEND_URL}/verify-email/{token}"
+#         # send_mail(
+#         #     'Verify your email',
+#         #     f'Please verify your email by clicking this link: {verification_link}',
+#         #     settings.DEFAULT_FROM_EMAIL,
+#         #     [user.email],
+#         #     fail_silently=False,
+#         # )
+        
+#         print(f"Verification token for {user.email}: {token}")
+#         if therapist_pin:
+#             print(f"Therapist PIN for {user.email}: {therapist_pin}")
+        
+        
+        
+#         response_data = {
+#             'user': UserProfileSerializer(user).data,
+#             'message': 'User registered successfully. Please verify your email.'
+#         }
+        
+#         # Add therapist PIN to response if user is a therapist
+#         if therapist_pin:
+#             response_data['therapist_pin'] = therapist_pin
+        
+#         return Response(response_data, status=status.HTTP_201_CREATED)
+
+    
 class RegisterView(generics.CreateAPIView):
     serializer_class = RegisterSerializer
     permission_classes = [permissions.AllowAny]
-    
+
     @extend_schema(
         request=RegisterSerializer,
         responses={201: UserProfileSerializer},
@@ -97,52 +178,45 @@ class RegisterView(generics.CreateAPIView):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
-        
-        # Create TherapistProfile with unique PIN if user is a therapist
+
         therapist_pin = None
+
+        # Handle therapist profile creation
         if user.user_type == 'therapist':
+            extra = getattr(user, '_extra_profile_data', {})
+            license_number = extra.get('license_number')
+            specialization = extra.get('specialization')
+
+            # Create the therapist profile
             therapist_profile = TherapistProfile.objects.create(
                 user=user,
-                license_number='',  # Will be filled later
-                specialization='',  # Will be filled later
+                license_number=license_number,
+                specialization=specialization,
             )
             therapist_pin = therapist_profile.therapist_pin
-        
-        # Create verification token and send email
+
+        # Email verification token
         token = uuid.uuid4()
         expires_at = timezone.now() + timedelta(days=1)
-        
+
         EmailVerificationToken.objects.create(
             user=user,
             token=token,
             expires_at=expires_at
         )
-        
-        # In production, send actual email
-        # verification_link = f"{settings.FRONTEND_URL}/verify-email/{token}"
-        # send_mail(
-        #     'Verify your email',
-        #     f'Please verify your email by clicking this link: {verification_link}',
-        #     settings.DEFAULT_FROM_EMAIL,
-        #     [user.email],
-        #     fail_silently=False,
-        # )
-        
+
         print(f"Verification token for {user.email}: {token}")
         if therapist_pin:
             print(f"Therapist PIN for {user.email}: {therapist_pin}")
-        
-        
-        
+
         response_data = {
             'user': UserProfileSerializer(user).data,
             'message': 'User registered successfully. Please verify your email.'
         }
-        
-        # Add therapist PIN to response if user is a therapist
+
         if therapist_pin:
             response_data['therapist_pin'] = therapist_pin
-        
+
         return Response(response_data, status=status.HTTP_201_CREATED)
 
 
@@ -259,6 +333,7 @@ class PasswordResetRequestView(APIView):
 
                 # trying for the frontend
                 frontend_url = "http://192.168.100.117:8081"
+           
                 reset_link = f"{frontend_url}/auth/reset-confirm?token={token}"
 
                 send_mail(
