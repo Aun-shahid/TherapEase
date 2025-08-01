@@ -200,6 +200,14 @@ export default function LoginScreen() {
               Forgot Password?
             </Text>
           </TouchableOpacity>
+          <TouchableOpacity 
+            onPress={() => !isLoading && router.push('./verify-email')}
+            disabled={isLoading}
+          >
+            <Text style={[styles.linkText, {color: themeStyle.text}, isLoading && styles.linkTextDisabled]}>
+              Verify email
+            </Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>

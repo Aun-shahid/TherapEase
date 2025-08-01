@@ -190,6 +190,7 @@ export const useAuth = (): AuthState & AuthActions => {
     } catch (error) {
       console.log('[useAuth] Registration error:', error);
       setError(error as AuthError);
+      throw error;
     }
   };
 
