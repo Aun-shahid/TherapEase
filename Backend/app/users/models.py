@@ -77,6 +77,7 @@ class PatientProfile(models.Model):
     # Contact and emergency information
     emergency_contact_name = models.CharField(max_length=100, blank=True, null=True)
     emergency_contact_phone = models.CharField(max_length=20, blank=True, null=True)
+    address = models.TextField(blank=True, null=True, help_text="Patient's address")
     
     # Medical information
     medical_history = models.TextField(blank=True, null=True)
@@ -94,6 +95,12 @@ class PatientProfile(models.Model):
     # History integration
     history_id = models.UUIDField(null=True, blank=True, 
                                 help_text="ID linking to patient history records")
+    
+    # Account linking fields
+    is_linked_account = models.BooleanField(default=False, 
+                                          help_text="True if this patient profile is linked to a user account")
+    linked_at = models.DateTimeField(null=True, blank=True, 
+                                   help_text="Timestamp when the account was linked")
     
     def save(self, *args, **kwargs):
         # Auto-generate patient ID if not provided
@@ -150,6 +157,18 @@ class PatientProfile(models.Model):
     class Meta:
         db_table = 'patient_profiles'
         ordering = ['-user__created_at']
+        indexes = [
+            models.Index(fields=['patient_id'], name='patient_id_idx'),
+            models.Index(fields=['therapist', 'connected_at'], name='therapist_connected_idx'),
+            models.Index(fields=['is_linked_account'], name='linked_account_idx'),
+            models.Index(fields=['created_by_therapist'], name='created_by_idx'),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(session_frequency__in=['weekly', 'biweekly', 'monthly', 'as_needed']),
+                name='valid_session_frequency'
+            ),
+        ]
 
 class TherapistProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='therapist_profile')

@@ -21,7 +21,6 @@ urlpatterns = [
     path("api/history/", include("history.urls")), # Patient history and tracking
     # path("api/transcription/", include("transcription.urls")),
     # path("api/soap/", include("soap.urls")),
-    # path("api/core/", include("core.urls")),
 
     # OpenAPI/Swagger UI URLs
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),

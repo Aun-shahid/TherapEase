@@ -1,5 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
+from drf_spectacular.utils import extend_schema_field
 from .models import (
     MoodEntry, JournalEntry, ActivityLog, MedicationLog, SleepLog,
     SymptomTracker, CopingStrategy, PatientMilestone, ReflectionPrompt,
@@ -23,7 +24,7 @@ class MoodEntrySerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
     
-    def get_triggers_list(self, obj):
+    def get_triggers_list(self, obj) -> list:
         return obj.get_triggers_list()
     
     def create(self, validated_data):
@@ -73,7 +74,7 @@ class JournalEntrySerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'word_count', 'created_at', 'updated_at']
     
-    def get_tags_list(self, obj):
+    def get_tags_list(self, obj) -> list:
         return obj.get_tags_list()
     
     def create(self, validated_data):
@@ -112,6 +113,14 @@ class ActivityLogSerializer(serializers.ModelSerializer):
     """Serializer for activity logs"""
     mood_impact = serializers.ReadOnlyField()
     energy_impact = serializers.ReadOnlyField()
+    
+    @extend_schema_field(serializers.CharField)
+    def mood_impact(self, obj):
+        return obj.mood_impact
+    
+    @extend_schema_field(serializers.CharField)
+    def energy_impact(self, obj):
+        return obj.energy_impact
     
     class Meta:
         model = ActivityLog

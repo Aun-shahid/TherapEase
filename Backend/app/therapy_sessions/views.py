@@ -2,24 +2,30 @@ from django.shortcuts import render, get_object_or_404
 from django.contrib.auth import get_user_model
 from django.utils import timezone
 from django.db.models import Q, Count, Avg
-from rest_framework import generics, status, permissions
+from rest_framework import generics, status, permissions, serializers
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiExample, OpenApiParameter
 from datetime import datetime, timedelta
 import json
+from .exceptions import (
+    validate_user_role_for_action, validate_patient_therapist_connection,
+    validate_session_status_transition, PatientNotConnectedException,
+    SessionNotAvailableException, MaxPatientsReachedException
+)
 
 from .models import (
     Session, SessionTemplate, PatientProgress, SessionReminder, 
-    TherapistAvailability, SessionQRCode, SessionAudio, SessionInsight,
-    PatientPairingRequest
+    TherapistAvailability, SessionQRCode, SessionAudio, SessionInsight
 )
 from .serializers import (
     SessionSerializer, SessionCreateSerializer, SessionUpdateSerializer,
     SessionTemplateSerializer, PatientProgressSerializer, 
     TherapistAvailabilitySerializer, SessionInsightSerializer,
-    PatientListSerializer, SessionStatsSerializer, PatientPairingRequestSerializer
+    PatientListSerializer, SessionStatsSerializer, EnhancedPatientCreateSerializer,
+    PatientSessionSerializer, TherapistSessionSerializer, SessionListSerializer,
+    SessionRequestSerializer
 )
 from users.models import PatientProfile, TherapistProfile
 
@@ -28,14 +34,8 @@ User = get_user_model()
 
 @extend_schema(
     tags=['Therapy Sessions'],
-    summary="List or create therapy sessions",
-    description="Get all sessions for the authenticated therapist or create a new session. Supports both regular sessions with assigned patients and quick sessions with just patient names.",
-    parameters=[
-        OpenApiParameter(name='status', description='Filter by session status', required=False, type=str),
-        OpenApiParameter(name='start_date', description='Filter sessions from this date (YYYY-MM-DD)', required=False, type=str),
-        OpenApiParameter(name='end_date', description='Filter sessions until this date (YYYY-MM-DD)', required=False, type=str),
-        OpenApiParameter(name='patient_id', description='Filter sessions for specific patient', required=False, type=str),
-    ],
+    summary="Create therapy sessions",
+    description="Create a new therapy session. Only therapists can create sessions. Supports both regular sessions with assigned patients and quick sessions with just patient names. Returns session IDs and WebSocket URLs for real-time session communication.",
     examples=[
         OpenApiExample(
             'Regular Session Creation',
@@ -47,13 +47,37 @@ User = get_user_model()
                 "scheduled_date": "2024-01-15T10:00:00Z",
                 "duration_minutes": 60,
                 "location": "Clinic Room 1",
-                "is_online": False,
+                "is_online": True,
                 "patient_goals": "Work on anxiety management techniques",
                 "fee_charged": 150.00,
                 "consent_recording": True,
                 "consent_ai_analysis": True
             },
             request_only=True,
+        ),
+        OpenApiExample(
+            'Session Response with WebSocket',
+            summary='Session response including WebSocket URL',
+            description='Example response showing session with WebSocket connection details',
+            value={
+                "id": "123e4567-e89b-12d3-a456-426614174000",
+                "session_number": 5,
+                "session_type": "individual",
+                "scheduled_date": "2024-01-15T10:00:00Z",
+                "status": "scheduled",
+                "is_online": True,
+                "websocket_room_id": "456e7890-e89b-12d3-a456-426614174001",
+                "websocket_url": "wss://your-domain.com/ws/therapy-session/456e7890-e89b-12d3-a456-426614174001/",
+                "can_start_websocket": True,
+                "consent_recording": True,
+                "consent_ai_analysis": True,
+                "patient": {
+                    "id": "789e0123-e89b-12d3-a456-426614174002",
+                    "full_name": "John Smith",
+                    "patient_id": "PT24001"
+                }
+            },
+            response_only=True,
         ),
         OpenApiExample(
             'Quick Session Creation',
@@ -65,7 +89,7 @@ User = get_user_model()
                 "scheduled_date": "2024-01-15T10:00:00Z",
                 "duration_minutes": 60,
                 "location": "Clinic Room 1",
-                "is_online": False,
+                "is_online": True,
                 "patient_goals": "Emergency session for anxiety",
                 "consent_recording": True,
                 "consent_ai_analysis": True
@@ -74,50 +98,54 @@ User = get_user_model()
         ),
     ]
 )
-class TherapistSessionsView(generics.ListCreateAPIView):
-    """List all sessions for a therapist or create a new session"""
+class TherapistSessionsView(generics.CreateAPIView):
+    """Create a new therapy session (therapists only)"""
     permission_classes = [permissions.IsAuthenticated]
-    
-    def get_serializer_class(self):
-        if self.request.method == 'POST':
-            return SessionCreateSerializer
-        return SessionSerializer
-    
-    def get_queryset(self):
-        user = self.request.user
-        if user.user_type != 'therapist':
-            return Session.objects.none()
-        
-        queryset = Session.objects.filter(therapist=user)
-        
-        # Filter by status
-        status_filter = self.request.query_params.get('status')
-        if status_filter:
-            queryset = queryset.filter(status=status_filter)
-        
-        # Filter by date range
-        start_date = self.request.query_params.get('start_date')
-        end_date = self.request.query_params.get('end_date')
-        if start_date:
-            queryset = queryset.filter(scheduled_date__gte=start_date)
-        if end_date:
-            queryset = queryset.filter(scheduled_date__lte=end_date)
-        
-        # Filter by patient
-        patient_id = self.request.query_params.get('patient_id')
-        if patient_id:
-            queryset = queryset.filter(patient__id=patient_id)
-        
-        return queryset.select_related('patient', 'therapist').order_by('-scheduled_date')
+    serializer_class = SessionCreateSerializer
     
     def perform_create(self, serializer):
+        if self.request.user.user_type != 'therapist':
+            raise PermissionError("Only therapists can create sessions")
         serializer.save(therapist=self.request.user, created_by=self.request.user)
+    
+    def create(self, request, *args, **kwargs):
+        """Create a new session and return full session data including ID and WebSocket info"""
+        if request.user.user_type != 'therapist':
+            return Response(
+                {'detail': 'Only therapists can create sessions.'}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        # Create the session
+        session = serializer.save(therapist=request.user, created_by=request.user)
+        
+        # Return full session data using SessionSerializer
+        response_serializer = SessionSerializer(session, context={'request': request})
+        
+        return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
 
 @extend_schema(
     tags=['Therapy Sessions'],
-    summary="Session details",
-    description="Retrieve, update or delete a specific therapy session",
+    responses={
+        200: OpenApiResponse(description='Session retrieved successfully.'),
+        404: OpenApiResponse(description='Session not found.'),
+        403: OpenApiResponse(description='Access denied.')
+    },
+    methods=['GET']
+)
+@extend_schema(
+    tags=['Therapy Sessions'],
+    request=SessionUpdateSerializer,
+    responses={
+        200: OpenApiResponse(description='Session updated successfully.'),
+        400: OpenApiResponse(description='Invalid data provided.'),
+        404: OpenApiResponse(description='Session not found.'),
+        403: OpenApiResponse(description='Access denied.')
+    },
     examples=[
         OpenApiExample(
             'Session Update',
@@ -134,14 +162,25 @@ class TherapistSessionsView(generics.ListCreateAPIView):
             },
             request_only=True,
         ),
-    ]
+    ],
+    methods=['PATCH']
+)
+@extend_schema(
+    tags=['Therapy Sessions'],
+    responses={
+        204: OpenApiResponse(description='Session deleted successfully.'),
+        404: OpenApiResponse(description='Session not found.'),
+        403: OpenApiResponse(description='Access denied.')
+    },
+    methods=['DELETE']
 )
 class SessionDetailView(generics.RetrieveUpdateDestroyAPIView):
     """Retrieve, update or delete a specific session"""
     permission_classes = [permissions.IsAuthenticated]
+    http_method_names = ['get', 'patch', 'delete', 'head', 'options']  # Remove PUT
     
     def get_serializer_class(self):
-        if self.request.method in ['PUT', 'PATCH']:
+        if self.request.method == 'PATCH':
             return SessionUpdateSerializer
         return SessionSerializer
     
@@ -182,10 +221,39 @@ class TherapistPatientsView(generics.ListAPIView):
 @extend_schema(
     tags=['Patient Management'],
     summary="Create new patient",
-    description="Create a new patient and assign to the authenticated therapist",
+    description="Create a new patient and assign to the authenticated therapist. This endpoint allows therapists to create comprehensive patient profiles with all necessary information for therapy management.",
+    request={
+        'application/json': {
+            'type': 'object',
+            'required': ['first_name', 'last_name', 'phone_number'],
+            'properties': {
+                'first_name': {'type': 'string', 'maxLength': 150, 'description': 'Patient first name (required)'},
+                'last_name': {'type': 'string', 'maxLength': 150, 'description': 'Patient last name (required)'},
+                'phone_number': {'type': 'string', 'maxLength': 20, 'description': 'Patient phone number (required)'},
+                'email': {'type': 'string', 'format': 'email', 'description': 'Patient email address (optional)'},
+                'date_of_birth': {'type': 'string', 'format': 'date', 'description': 'Patient date of birth (YYYY-MM-DD)'},
+                'gender': {'type': 'string', 'enum': ['male', 'female', 'other', 'prefer_not_to_say'], 'description': 'Patient gender'},
+                'primary_concern': {'type': 'string', 'description': 'Primary concern or issue for therapy'},
+                'therapy_start_date': {'type': 'string', 'format': 'date', 'description': 'Date when therapy started (YYYY-MM-DD)'},
+                'session_frequency': {'type': 'string', 'enum': ['weekly', 'biweekly', 'monthly', 'as_needed'], 'default': 'weekly', 'description': 'Preferred session frequency'},
+                'preferred_session_days': {'type': 'array', 'items': {'type': 'string', 'enum': ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']}, 'description': 'Preferred days for sessions'},
+                'emergency_contact_name': {'type': 'string', 'maxLength': 100, 'description': 'Emergency contact name'},
+                'emergency_contact_phone': {'type': 'string', 'maxLength': 20, 'description': 'Emergency contact phone number'},
+                'address': {'type': 'string', 'description': 'Patient address'},
+                'medical_history': {'type': 'string', 'description': 'Patient medical history'},
+                'current_medications': {'type': 'string', 'description': 'Current medications'},
+                'preferred_language': {'type': 'string', 'enum': ['en', 'ur'], 'default': 'en', 'description': 'Preferred language for communication'}
+            }
+        }
+    },
+    responses={
+        201: OpenApiResponse(description='Patient created successfully.'),
+        400: OpenApiResponse(description='Validation failed or maximum patient limit reached.'),
+        403: OpenApiResponse(description='Only therapists can create patients.')
+    },
     examples=[
         OpenApiExample(
-            'Create Patient',
+            'Create Patient Request',
             summary='Create a new patient profile',
             description='Create a comprehensive patient profile with all required information',
             value={
@@ -201,17 +269,63 @@ class TherapistPatientsView(generics.ListAPIView):
                 "preferred_session_days": ["monday", "wednesday", "friday"],
                 "emergency_contact_name": "Jane Doe",
                 "emergency_contact_phone": "+1234567891",
+                "address": "123 Main Street, City, State 12345",
                 "medical_history": "No significant medical history",
                 "current_medications": "None",
                 "preferred_language": "en"
             },
             request_only=True,
         ),
+        OpenApiExample(
+            'Minimal Patient Request',
+            summary='Create patient with minimal required fields',
+            description='Create a patient with only the required fields',
+            value={
+                "first_name": "Jane",
+                "last_name": "Smith",
+                "phone_number": "+1987654321"
+            },
+            request_only=True,
+        ),
+        OpenApiExample(
+            'Create Patient Response',
+            summary='Successful patient creation response',
+            description='Response when patient is successfully created',
+            value={
+                "patient": {
+                    "id": "123e4567-e89b-12d3-a456-426614174000",
+                    "full_name": "John Doe",
+                    "email": "john.doe@example.com",
+                    "phone_number": "+1234567890",
+                    "date_of_birth": "1990-01-15",
+                    "gender": "male",
+                    "patient_profile": {
+                        "patient_id": "PT24001",
+                        "primary_concern": "Anxiety and stress management",
+                        "therapy_start_date": "2024-01-01",
+                        "session_frequency": "weekly",
+                        "preferred_session_days": ["monday", "wednesday", "friday"],
+                        "emergency_contact_name": "Jane Doe",
+                        "emergency_contact_phone": "+1234567891",
+                        "preferred_language": "en",
+                        "connected_at": "2024-01-15T10:00:00Z"
+                    },
+                    "total_sessions": 0,
+                    "created_at": "2024-01-15T10:00:00Z"
+                },
+                "message": "Patient created successfully.",
+                "patient_id": "PT24001",
+                "temporary_password": "TempPass123!"
+            },
+            response_only=True,
+        ),
     ]
 )
-class CreatePatientView(APIView):
+class CreatePatientView(generics.GenericAPIView):
     """Create a new patient and assign to therapist"""
     permission_classes = [permissions.IsAuthenticated]
+    serializer_class = EnhancedPatientCreateSerializer
+    
     def post(self, request):
         user = request.user
         if user.user_type != 'therapist':
@@ -230,51 +344,32 @@ class CreatePatientView(APIView):
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
-            data = request.data
+            # Use the enhanced serializer for validation and creation
+            serializer = EnhancedPatientCreateSerializer(
+                data=request.data,
+                context={'therapist': therapist_profile}
+            )
             
-            # Prepare user data
-            user_data = {
-                'username': data.get('email'),  # Use email as username
-                'email': data.get('email'),
-                'first_name': data.get('first_name', ''),
-                'last_name': data.get('last_name', ''),
-                'phone_number': data.get('phone_number', ''),
-                'date_of_birth': data.get('date_of_birth'),
-                'gender': data.get('gender'),
-                'user_type': 'patient',
-                'password': User.objects.make_random_password(),  # Generate random password
-            }
-            
-            # Prepare patient profile data
-            patient_data = {
-                'primary_concern': data.get('primary_concern', ''),
-                'therapy_start_date': data.get('therapy_start_date'),
-                'session_frequency': data.get('session_frequency', 'weekly'),
-                'emergency_contact_name': data.get('emergency_contact_name', ''),
-                'emergency_contact_phone': data.get('emergency_contact_phone', ''),
-                'medical_history': data.get('medical_history', ''),
-                'current_medications': data.get('current_medications', ''),
-                'preferred_language': data.get('preferred_language', 'en'),
-            }
-            
-            # Handle preferred session days
-            preferred_days = data.get('preferred_session_days', [])
-            if preferred_days:
-                patient_data['preferred_session_days'] = ','.join(preferred_days)
-            
-            # Create patient
-            patient_profile = therapist_profile.create_patient(user_data, patient_data)
-            
-            # Serialize response
-            serializer = PatientListSerializer(patient_profile.user)
-            
-            return Response({
-                'patient': serializer.data,
-                'message': 'Patient created successfully.',
-                'patient_id': patient_profile.patient_id,
-                'temporary_password': user_data['password']  # Send this securely in production
-            }, status=status.HTTP_201_CREATED)
-            
+            if serializer.is_valid():
+                result = serializer.save()
+                patient_profile = result['patient_profile']
+                temporary_password = result['temporary_password']
+                
+                # Serialize response using PatientListSerializer
+                patient_serializer = PatientListSerializer(patient_profile.user)
+                
+                return Response({
+                    'patient': patient_serializer.data,
+                    'message': 'Patient created successfully.',
+                    'patient_id': patient_profile.patient_id,
+                    'temporary_password': temporary_password  # Send this securely in production
+                }, status=status.HTTP_201_CREATED)
+            else:
+                return Response({
+                    'detail': 'Validation failed.',
+                    'errors': serializer.errors
+                }, status=status.HTTP_400_BAD_REQUEST)
+                
         except Exception as e:
             return Response(
                 {'detail': f'Error creating patient: {str(e)}'}, 
@@ -303,9 +398,15 @@ class CreatePatientView(APIView):
         ),
     ]
 )
-class StartSessionView(APIView):
+class StartSessionView(generics.GenericAPIView):
     """Start a session"""
     permission_classes = [permissions.IsAuthenticated]
+    
+    class StartSessionResponseSerializer(serializers.Serializer):
+        detail = serializers.CharField()
+        session = SessionSerializer()
+    
+    serializer_class = StartSessionResponseSerializer
     
     def post(self, request, session_id):
         user = request.user
@@ -317,9 +418,10 @@ class StartSessionView(APIView):
         
         session = get_object_or_404(Session, id=session_id, therapist=user)
         
-        if session.status != 'scheduled':
+        # Allow starting sessions that are UPCOMING, RESCHEDULED, or REQUESTED (therapist can approve and start)
+        if session.status not in ['UPCOMING', 'RESCHEDULED', 'REQUESTED']:
             return Response(
-                {'detail': 'Session cannot be started. Current status: ' + session.status}, 
+                {'detail': f'Session cannot be started. Current status: {session.status}. Only UPCOMING, RESCHEDULED, or REQUESTED sessions can be started.'}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
         
@@ -331,9 +433,60 @@ class StartSessionView(APIView):
         }, status=status.HTTP_200_OK)
 
 
-class EndSessionView(APIView):
+@extend_schema(
+    tags=['Therapy Sessions'],
+    summary="End therapy session",
+    description="End an in-progress therapy session. Changes status from 'in_progress' to 'completed' and records actual end time. Allows updating session notes and patient mood.",
+    request={
+        'application/json': {
+            'type': 'object',
+            'properties': {
+                'session_notes': {'type': 'string', 'description': 'Final session notes'},
+                'patient_mood_after': {'type': 'integer', 'minimum': 1, 'maximum': 10, 'description': 'Patient mood after session (1-10)'},
+                'homework_assigned': {'type': 'string', 'description': 'Homework or tasks assigned'},
+                'next_session_goals': {'type': 'string', 'description': 'Goals for next session'},
+                'session_effectiveness': {'type': 'integer', 'minimum': 1, 'maximum': 10, 'description': 'Therapist rating of session effectiveness (1-10)'}
+            }
+        }
+    },
+    responses={
+        200: OpenApiResponse(description='Session ended successfully.'),
+        400: OpenApiResponse(description='Session is not in progress.'),
+        403: OpenApiResponse(description='Only therapists can end sessions.'),
+        404: OpenApiResponse(description='Session not found.')
+    },
+    examples=[
+        OpenApiExample(
+            'End Session Request',
+            summary='End session with notes and ratings',
+            description='Complete a session with final notes and patient mood rating',
+            value={
+                "session_notes": "Patient showed significant improvement. Discussed coping strategies and assigned breathing exercises.",
+                "patient_mood_after": 8,
+                "homework_assigned": "Practice breathing exercises daily for 10 minutes",
+                "next_session_goals": "Continue working on anxiety management techniques",
+                "session_effectiveness": 9
+            },
+            request_only=True,
+        ),
+    ]
+)
+class EndSessionView(generics.GenericAPIView):
     """End a session"""
     permission_classes = [permissions.IsAuthenticated]
+    
+    class EndSessionRequestSerializer(serializers.Serializer):
+        session_notes = serializers.CharField(required=False, allow_blank=True)
+        patient_mood_after = serializers.IntegerField(min_value=1, max_value=10, required=False)
+        homework_assigned = serializers.CharField(required=False, allow_blank=True)
+        next_session_goals = serializers.CharField(required=False, allow_blank=True)
+        session_effectiveness = serializers.IntegerField(min_value=1, max_value=10, required=False)
+    
+    class EndSessionResponseSerializer(serializers.Serializer):
+        detail = serializers.CharField()
+        session = SessionSerializer()
+    
+    serializer_class = EndSessionRequestSerializer
     
     def post(self, request, session_id):
         user = request.user
@@ -345,7 +498,7 @@ class EndSessionView(APIView):
         
         session = get_object_or_404(Session, id=session_id, therapist=user)
         
-        if session.status != 'in_progress':
+        if session.status != 'IN_PROGRESS':
             return Response(
                 {'detail': 'Session is not in progress.'}, 
                 status=status.HTTP_400_BAD_REQUEST
@@ -372,9 +525,67 @@ class EndSessionView(APIView):
         }, status=status.HTTP_200_OK)
 
 
-class SessionStatsView(APIView):
+@extend_schema(
+    tags=['Therapy Sessions'],
+    summary="Get session statistics",
+    description="Get comprehensive session statistics for the authenticated therapist including counts, averages, and breakdowns by status and type.",
+    parameters=[
+        OpenApiParameter(
+            name='days',
+            description='Number of days to include in statistics (default: 30)',
+            required=False,
+            type=int
+        ),
+    ],
+    responses={
+        200: OpenApiResponse(description='Session statistics retrieved successfully.'),
+        403: OpenApiResponse(description='Only therapists can access session stats.')
+    },
+    examples=[
+        OpenApiExample(
+            'Session Statistics Response',
+            summary='Comprehensive session statistics',
+            description='Example response with session statistics for the last 30 days',
+            value={
+                "total_sessions": 45,
+                "completed_sessions": 38,
+                "cancelled_sessions": 4,
+                "no_show_sessions": 2,
+                "upcoming_sessions": 12,
+                "total_patients": 15,
+                "average_session_effectiveness": 8.2,
+                "sessions_by_status": [
+                    {"status": "completed", "count": 38},
+                    {"status": "scheduled", "count": 12},
+                    {"status": "cancelled", "count": 4},
+                    {"status": "no_show", "count": 2}
+                ],
+                "sessions_by_type": [
+                    {"session_type": "individual", "count": 40},
+                    {"session_type": "group", "count": 3},
+                    {"session_type": "assessment", "count": 2}
+                ]
+            },
+            response_only=True,
+        ),
+    ]
+)
+class SessionStatsView(generics.GenericAPIView):
     """Get session statistics for therapist"""
     permission_classes = [permissions.IsAuthenticated]
+    
+    class SessionStatsResponseSerializer(serializers.Serializer):
+        total_sessions = serializers.IntegerField()
+        completed_sessions = serializers.IntegerField()
+        cancelled_sessions = serializers.IntegerField()
+        no_show_sessions = serializers.IntegerField()
+        upcoming_sessions = serializers.IntegerField()
+        total_patients = serializers.IntegerField()
+        average_session_effectiveness = serializers.FloatField(allow_null=True)
+        sessions_by_status = serializers.ListField()
+        sessions_by_type = serializers.ListField()
+    
+    serializer_class = SessionStatsResponseSerializer
     
     def get(self, request):
         user = request.user
@@ -395,11 +606,11 @@ class SessionStatsView(APIView):
         
         stats = {
             'total_sessions': sessions.count(),
-            'completed_sessions': sessions.filter(status='completed').count(),
-            'cancelled_sessions': sessions.filter(status='cancelled').count(),
-            'no_show_sessions': sessions.filter(status='no_show').count(),
+            'completed_sessions': sessions.filter(status='COMPLETED').count(),
+            'cancelled_sessions': sessions.filter(status='CANCELLED').count(),
+            'no_show_sessions': sessions.filter(status='NO_SHOW').count(),
             'upcoming_sessions': sessions.filter(
-                status='scheduled',
+                status='UPCOMING',
                 scheduled_date__gte=timezone.now()
             ).count(),
             'total_patients': sessions.values('patient').distinct().count(),
@@ -417,19 +628,167 @@ class SessionStatsView(APIView):
         return Response(stats, status=status.HTTP_200_OK)
 
 
-class PatientSessionsView(generics.ListAPIView):
-    """List sessions for a patient"""
-    serializer_class = SessionSerializer
+@extend_schema(
+    tags=['Therapy Sessions'],
+    summary="Get sessions list",
+    description="Get a list of sessions with basic details for the authenticated user. Returns sessions sorted by date and time, suitable for calendar display. Supports role-based filtering for both patients and therapists.",
+    parameters=[
+        OpenApiParameter(
+            name='date',
+            description='Filter sessions by specific date (YYYY-MM-DD)',
+            required=False,
+            type=str
+        ),
+        OpenApiParameter(
+            name='status',
+            description='Filter sessions by status',
+            required=False,
+            type=str,
+            enum=['REQUESTED', 'UPCOMING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'RESCHEDULED', 'NO_SHOW']
+        ),
+        OpenApiParameter(
+            name='limit',
+            description='Limit number of results (default: 50)',
+            required=False,
+            type=int
+        ),
+    ],
+    responses={
+        200: OpenApiResponse(description='Sessions retrieved successfully.'),
+        403: OpenApiResponse(description='Authentication required.')
+    },
+    examples=[
+        OpenApiExample(
+            'Sessions List Response',
+            summary='Basic sessions list with calendar-friendly data',
+            description='Response showing sessions with basic details for calendar display',
+            value={
+                "sessions": [
+                    {
+                        "id": "123e4567-e89b-12d3-a456-426614174000",
+                        "therapist_name": "Dr. Sarah Johnson",
+                        "patient_name": "John Smith",
+                        "session_date": "2024-01-20T10:00:00Z",
+                        "location": "Clinic Room 1",
+                        "status": "UPCOMING",
+                        "session_type": "individual",
+                        "duration_minutes": 60,
+                        "is_online": False
+                    }
+                ],
+                "total_count": 25,
+                "user_type": "therapist"
+            },
+            response_only=True,
+        ),
+    ]
+)
+class SessionsListView(generics.ListAPIView):
+    """Get sessions list with basic details for calendar display"""
+    serializer_class = SessionListSerializer
     permission_classes = [permissions.IsAuthenticated]
     
     def get_queryset(self):
         user = self.request.user
-        if user.user_type != 'patient':
+        
+        # Base queryset based on user type
+        if user.user_type == 'therapist':
+            queryset = Session.objects.filter(therapist=user)
+        elif user.user_type == 'patient':
+            queryset = Session.objects.filter(patient=user)
+        else:
             return Session.objects.none()
         
-        return Session.objects.filter(patient=user).order_by('-scheduled_date')
+        # Apply filters
+        date_filter = self.request.query_params.get('date')
+        if date_filter:
+            queryset = queryset.filter(scheduled_date__date=date_filter)
+        
+        status_filter = self.request.query_params.get('status')
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+        
+        # Apply limit
+        limit = int(self.request.query_params.get('limit', 50))
+        
+        return queryset.select_related('patient', 'therapist').order_by('scheduled_date')[:limit]
+    
+    def list(self, request, *args, **kwargs):
+        """Override list to add user type and total count"""
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        
+        return Response({
+            'sessions': serializer.data,
+            'total_count': len(serializer.data),
+            'user_type': request.user.user_type
+        }, status=status.HTTP_200_OK)
 
 
+@extend_schema(
+    tags=['Therapy Sessions'],
+    summary="Request therapy session",
+    description="Allow patients to request a therapy session from their connected therapist. The session will be created with REQUESTED status and basic information.",
+    request=SessionRequestSerializer,
+    responses={
+        201: OpenApiResponse(description='Session request created successfully.'),
+        400: OpenApiResponse(description='Invalid data or patient not connected to therapist.'),
+        403: OpenApiResponse(description='Only patients can request sessions.')
+    },
+    examples=[
+        OpenApiExample(
+            'Session Request',
+            summary='Patient requesting a therapy session',
+            description='Patient creates a session request with basic information',
+            value={
+                "therapist_id": "456e7890-e89b-12d3-a456-426614174001",
+                "scheduled_date": "2024-01-25T14:00:00Z",
+                "location": "Clinic Room 1",
+                "is_online": False,
+                "patient_goals": "Need help with anxiety management",
+                "duration_minutes": 60
+            },
+            request_only=True,
+        ),
+    ]
+)
+class SessionRequestView(generics.CreateAPIView):
+    """Allow patients to request therapy sessions"""
+    serializer_class = SessionRequestSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def create(self, request, *args, **kwargs):
+        """Create a session request"""
+        if request.user.user_type != 'patient':
+            return Response(
+                {'detail': 'Only patients can request sessions.'}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        serializer = self.get_serializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        
+        # Create the session request
+        session = serializer.save()
+        
+        # Return session data using SessionSerializer
+        response_serializer = SessionSerializer(session, context={'request': request})
+        
+        return Response({
+            'detail': 'Session request created successfully.',
+            'session': response_serializer.data
+        }, status=status.HTTP_201_CREATED)
+
+
+@extend_schema(
+    tags=['Therapy Sessions'],
+    summary="Get upcoming sessions",
+    description="Get upcoming sessions for the authenticated user (therapist or patient). Returns up to 10 upcoming sessions ordered by scheduled date.",
+    responses={
+        200: OpenApiResponse(description='Upcoming sessions retrieved successfully.'),
+        403: OpenApiResponse(description='Authentication required.')
+    }
+)
 class UpcomingSessionsView(generics.ListAPIView):
     """Get upcoming sessions for therapist or patient"""
     serializer_class = SessionSerializer
@@ -442,105 +801,516 @@ class UpcomingSessionsView(generics.ListAPIView):
         if user.user_type == 'therapist':
             return Session.objects.filter(
                 therapist=user,
-                status='scheduled',
+                status='UPCOMING',
                 scheduled_date__gte=now
             ).order_by('scheduled_date')[:10]
         elif user.user_type == 'patient':
             return Session.objects.filter(
                 patient=user,
-                status='scheduled',
+                status='UPCOMING',
                 scheduled_date__gte=now
             ).order_by('scheduled_date')[:10]
         
         return Session.objects.none()
 
 
-class PairPatientView(APIView):
-    """Pair a patient to therapist using pairing code"""
+@extend_schema(
+    tags=['Therapy Sessions'],
+    summary="My Sessions - Unified endpoint for patients and therapists",
+    description="Get sessions for the authenticated user with role-based functionality. Supports filtering by time period and specific session details.",
+    parameters=[
+        OpenApiParameter(
+            name='session_id',
+            description='Get details for a specific session',
+            required=False,
+            type=str
+        ),
+        OpenApiParameter(
+            name='filter',
+            description='Filter sessions by time period',
+            required=False,
+            type=str,
+            enum=['upcoming', 'past'],
+            default='upcoming'
+        ),
+        OpenApiParameter(
+            name='limit',
+            description='Limit number of results (default: 20)',
+            required=False,
+            type=int
+        ),
+        OpenApiParameter(
+            name='offset',
+            description='Offset for pagination (default: 0)',
+            required=False,
+            type=int
+        ),
+    ],
+    examples=[
+        OpenApiExample(
+            'Patient Upcoming Sessions',
+            summary='Patient viewing upcoming sessions',
+            description='Response for patient viewing their upcoming appointments',
+            value={
+                "user_type": "patient",
+                "filter_applied": "upcoming",
+                "total_count": 3,
+                "sessions": [
+                    {
+                        "id": "123e4567-e89b-12d3-a456-426614174000",
+                        "session_number": 5,
+                        "session_type": "individual",
+                        "scheduled_date": "2024-01-20T10:00:00Z",
+                        "duration_minutes": 60,
+                        "status": "scheduled",
+                        "location": "Clinic Room 1",
+                        "is_online": False,
+                        "therapist": {
+                            "id": "456e7890-e89b-12d3-a456-426614174001",
+                            "full_name": "Dr. Sarah Johnson",
+                            "specialization": "Anxiety and Depression"
+                        },
+                        "appointment_label": "Therapy Appointment",
+                        "patient_goals": "Continue working on anxiety management"
+                    }
+                ]
+            },
+            response_only=True,
+        ),
+        OpenApiExample(
+            'Therapist Session Management',
+            summary='Therapist viewing sessions',
+            description='Response for therapist viewing their sessions with full details',
+            value={
+                "user_type": "therapist",
+                "filter_applied": "upcoming",
+                "total_count": 8,
+                "sessions": [
+                    {
+                        "id": "123e4567-e89b-12d3-a456-426614174000",
+                        "session_number": 5,
+                        "session_type": "individual",
+                        "scheduled_date": "2024-01-20T10:00:00Z",
+                        "duration_minutes": 60,
+                        "status": "scheduled",
+                        "location": "Clinic Room 1",
+                        "is_online": False,
+                        "patient": {
+                            "id": "789e0123-e89b-12d3-a456-426614174002",
+                            "full_name": "John Smith",
+                            "patient_id": "PT24001"
+                        },
+                        "patient_goals": "Continue working on anxiety management",
+                        "session_notes": "",
+                        "fee_charged": "150.00",
+                        "payment_status": "pending"
+                    }
+                ]
+            },
+            response_only=True,
+        ),
+    ]
+)
+class MySessionsView(generics.GenericAPIView):
+    """Unified sessions endpoint with role-based functionality"""
     permission_classes = [permissions.IsAuthenticated]
     
-    @extend_schema(
-        request={
-            'application/json': {
-                'type': 'object',
-                'properties': {
-                    'pairing_code': {'type': 'string', 'description': 'Therapist pairing code'},
-                }
-            }
-        },
-        responses={
-            200: OpenApiResponse(description='Successfully paired with therapist'),
-            400: OpenApiResponse(description='Invalid pairing code or already paired'),
-            403: OpenApiResponse(description='Only patients can pair with therapists')
-        }
-    )
-    def post(self, request):
+    class MySessionsResponseSerializer(serializers.Serializer):
+        sessions = serializers.ListField()
+        total_count = serializers.IntegerField()
+        user_type = serializers.CharField()
+    
+    serializer_class = MySessionsResponseSerializer
+    
+    def get(self, request):
         user = request.user
-        if user.user_type != 'patient':
+        session_id = request.query_params.get('session_id')
+        filter_param = request.query_params.get('filter', 'upcoming')
+        limit = int(request.query_params.get('limit', 20))
+        offset = int(request.query_params.get('offset', 0))
+        
+        # If specific session ID is requested, return session details
+        if session_id:
+            return self._get_session_detail(user, session_id)
+        
+        # Get sessions based on user role and filter
+        if user.user_type == 'patient':
+            return self._get_patient_sessions(user, filter_param, limit, offset)
+        elif user.user_type == 'therapist':
+            return self._get_therapist_sessions(user, filter_param, limit, offset)
+        else:
             return Response(
-                {'detail': 'Only patients can pair with therapists.'}, 
+                {'detail': 'Only patients and therapists can access sessions.'}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+    
+    def _get_session_detail(self, user, session_id):
+        """Get details for a specific session with enhanced error handling"""
+        try:
+            # Validate session_id format
+            import uuid
+            try:
+                uuid.UUID(session_id)
+            except ValueError:
+                return Response({
+                    'error': True,
+                    'message': 'Invalid session ID format',
+                    'details': {'session_id': ['Session ID must be a valid UUID']},
+                    'status_code': 400
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Validate user role
+            validate_user_role_for_action(user, user.user_type, 'access session details')
+            
+            if user.user_type == 'patient':
+                session = Session.objects.select_related('therapist', 'patient').get(
+                    id=session_id, patient=user
+                )
+                serializer = PatientSessionSerializer(session)
+            elif user.user_type == 'therapist':
+                session = Session.objects.select_related('therapist', 'patient').get(
+                    id=session_id, therapist=user
+                )
+                serializer = TherapistSessionSerializer(session)
+            else:
+                return Response({
+                    'error': True,
+                    'message': 'Access denied',
+                    'details': {'permission': ['Only patients and therapists can access session details']},
+                    'status_code': 403
+                }, status=status.HTTP_403_FORBIDDEN)
+            
+            return Response({
+                'session': serializer.data,
+                'user_type': user.user_type
+            }, status=status.HTTP_200_OK)
+            
+        except Session.DoesNotExist:
+            return Response({
+                'error': True,
+                'message': 'Session not found',
+                'details': {'session': ['Session not found or you do not have permission to access it']},
+                'status_code': 404
+            }, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({
+                'error': True,
+                'message': 'An error occurred while retrieving session details',
+                'details': {'server': [str(e)]},
+                'status_code': 500
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    def _get_patient_sessions(self, user, filter_param, limit, offset):
+        """Get sessions for patient with patient-specific presentation and enhanced validation"""
+        try:
+            # Validate filter parameter
+            valid_filters = ['upcoming', 'past']
+            if filter_param not in valid_filters:
+                return Response({
+                    'error': True,
+                    'message': 'Invalid filter parameter',
+                    'details': {'filter': [f'Filter must be one of: {", ".join(valid_filters)}']},
+                    'status_code': 400
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Validate pagination parameters
+            if limit < 1 or limit > 100:
+                return Response({
+                    'error': True,
+                    'message': 'Invalid limit parameter',
+                    'details': {'limit': ['Limit must be between 1 and 100']},
+                    'status_code': 400
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            if offset < 0:
+                return Response({
+                    'error': True,
+                    'message': 'Invalid offset parameter',
+                    'details': {'offset': ['Offset must be 0 or greater']},
+                    'status_code': 400
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Check if patient has a profile
+            if not hasattr(user, 'patient_profile'):
+                return Response({
+                    'error': True,
+                    'message': 'Patient profile not found',
+                    'details': {'profile': ['Patient profile is required to access sessions']},
+                    'status_code': 404
+                }, status=status.HTTP_404_NOT_FOUND)
+            
+            now = timezone.now()
+            
+            # Base queryset for patient sessions
+            queryset = Session.objects.filter(patient=user).select_related('therapist')
+            
+            # Apply time filter
+            if filter_param == 'upcoming':
+                queryset = queryset.filter(
+                    status__in=['UPCOMING'],
+                    scheduled_date__gte=now
+                ).order_by('scheduled_date')
+            else:  # past sessions
+                queryset = queryset.filter(
+                    Q(status__in=['COMPLETED', 'CANCELLED', 'NO_SHOW']) |
+                    Q(scheduled_date__lt=now)
+                ).order_by('-scheduled_date')
+            
+            # Apply pagination
+            total_count = queryset.count()
+            sessions = queryset[offset:offset + limit]
+            
+            # Serialize with patient-specific serializer
+            serializer = PatientSessionSerializer(sessions, many=True)
+            
+            return Response({
+                'user_type': 'patient',
+                'filter_applied': filter_param,
+                'total_count': total_count,
+                'sessions': serializer.data,
+                'pagination': {
+                    'limit': limit,
+                    'offset': offset,
+                    'has_next': offset + limit < total_count,
+                    'has_previous': offset > 0
+                }
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response({
+                'error': True,
+                'message': 'An error occurred while retrieving patient sessions',
+                'details': {'server': [str(e)]},
+                'status_code': 500
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    def _get_therapist_sessions(self, user, filter_param, limit, offset):
+        """Get sessions for therapist with therapist-specific presentation and enhanced validation"""
+        try:
+            # Validate filter parameter
+            valid_filters = ['upcoming', 'past']
+            if filter_param not in valid_filters:
+                return Response({
+                    'error': True,
+                    'message': 'Invalid filter parameter',
+                    'details': {'filter': [f'Filter must be one of: {", ".join(valid_filters)}']},
+                    'status_code': 400
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Validate pagination parameters
+            if limit < 1 or limit > 100:
+                return Response({
+                    'error': True,
+                    'message': 'Invalid limit parameter',
+                    'details': {'limit': ['Limit must be between 1 and 100']},
+                    'status_code': 400
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            if offset < 0:
+                return Response({
+                    'error': True,
+                    'message': 'Invalid offset parameter',
+                    'details': {'offset': ['Offset must be 0 or greater']},
+                    'status_code': 400
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Check if therapist has a profile
+            if not hasattr(user, 'therapist_profile'):
+                return Response({
+                    'error': True,
+                    'message': 'Therapist profile not found',
+                    'details': {'profile': ['Therapist profile is required to access sessions']},
+                    'status_code': 404
+                }, status=status.HTTP_404_NOT_FOUND)
+            
+            now = timezone.now()
+            
+            # Base queryset for therapist sessions
+            queryset = Session.objects.filter(therapist=user).select_related('patient')
+            
+            # Apply time filter
+            if filter_param == 'upcoming':
+                queryset = queryset.filter(
+                    status__in=['UPCOMING', 'IN_PROGRESS'],
+                    scheduled_date__gte=now
+                ).order_by('scheduled_date')
+            else:  # past sessions
+                queryset = queryset.filter(
+                    Q(status__in=['COMPLETED', 'CANCELLED', 'NO_SHOW']) |
+                    Q(scheduled_date__lt=now)
+                ).order_by('-scheduled_date')
+            
+            # Apply pagination
+            total_count = queryset.count()
+            sessions = queryset[offset:offset + limit]
+            
+            # Serialize with therapist-specific serializer
+            serializer = TherapistSessionSerializer(sessions, many=True)
+            
+            return Response({
+                'user_type': 'therapist',
+                'filter_applied': filter_param,
+                'total_count': total_count,
+                'sessions': serializer.data,
+                'pagination': {
+                    'limit': limit,
+                    'offset': offset,
+                    'has_next': offset + limit < total_count,
+                    'has_previous': offset > 0
+                }
+            }, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            return Response({
+                'error': True,
+                'message': 'An error occurred while retrieving therapist sessions',
+                'details': {'server': [str(e)]},
+                'status_code': 500
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@extend_schema(
+    tags=['Therapy Sessions'],
+    summary="Get past sessions",
+    description="Get all past sessions for the authenticated therapist with filtering options",
+    parameters=[
+        OpenApiParameter(name='patient_id', description='Filter by specific patient', required=False, type=str),
+        OpenApiParameter(name='limit', description='Limit number of results', required=False, type=int),
+        OpenApiParameter(name='offset', description='Offset for pagination', required=False, type=int),
+    ],
+)
+class PastSessionsView(generics.ListAPIView):
+    """Get past sessions for therapist"""
+    serializer_class = SessionSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_queryset(self):
+        user = self.request.user
+        if user.user_type != 'therapist':
+            return Session.objects.none()
+        
+        queryset = Session.objects.filter(
+            therapist=user,
+            status__in=['COMPLETED', 'CANCELLED', 'NO_SHOW']
+        ).order_by('-scheduled_date')
+        
+        # Filter by patient if specified
+        patient_id = self.request.query_params.get('patient_id')
+        if patient_id:
+            queryset = queryset.filter(patient__id=patient_id)
+        
+        return queryset
+
+
+@extend_schema(
+    tags=['Therapy Sessions'],
+    summary="Assign patient to quick session",
+    description="Assign a patient to a quick session that was created without a specific patient. The patient_id must be provided in the request body.",
+    request={
+        'application/json': {
+            'type': 'object',
+            'required': ['patient_id'],
+            'properties': {
+                'patient_id': {'type': 'string', 'format': 'uuid', 'description': 'ID of the patient to assign to the session'}
+            }
+        }
+    },
+    responses={
+        200: OpenApiResponse(description='Patient assigned successfully.'),
+        400: OpenApiResponse(description='Invalid request or patient not connected to therapist.'),
+        403: OpenApiResponse(description='Only therapists can assign patients.'),
+        404: OpenApiResponse(description='Session or patient not found.')
+    },
+    examples=[
+        OpenApiExample(
+            'Assign Patient Request',
+            summary='Assign existing patient to quick session',
+            description='Convert a quick session to a regular session by assigning a patient',
+            value={
+                "patient_id": "123e4567-e89b-12d3-a456-426614174000"
+            },
+            request_only=True,
+        ),
+    ]
+)
+class AssignPatientToSessionView(generics.GenericAPIView):
+    """Assign a patient to a quick session"""
+    permission_classes = [permissions.IsAuthenticated]
+    
+    class AssignPatientRequestSerializer(serializers.Serializer):
+        patient_id = serializers.UUIDField(required=True)
+    
+    class AssignPatientResponseSerializer(serializers.Serializer):
+        detail = serializers.CharField()
+        session = SessionSerializer()
+    
+    serializer_class = AssignPatientRequestSerializer
+    
+    def post(self, request, session_id):
+        user = request.user
+        if user.user_type != 'therapist':
+            return Response(
+                {'detail': 'Only therapists can assign patients to sessions.'}, 
                 status=status.HTTP_403_FORBIDDEN
             )
         
-        pairing_code = request.data.get('pairing_code', '').upper()
-        if not pairing_code:
+        session = get_object_or_404(Session, id=session_id, therapist=user)
+        
+        if not session.is_quick_session:
             return Response(
-                {'detail': 'Pairing code is required.'}, 
+                {'detail': 'This session already has an assigned patient.'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        patient_id = request.data.get('patient_id')
+        if not patient_id:
+            return Response(
+                {'detail': 'Patient ID is required in request body.'}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
         
         try:
-            # Find therapist with this pairing code
-            therapist_profile = TherapistProfile.objects.get(pairing_code=pairing_code)
+            patient = User.objects.get(id=patient_id, user_type='patient')
             
-            # Check if therapist can accept new patients
-            if not therapist_profile.can_accept_new_patients():
+            # Check if patient is connected to this therapist
+            if not hasattr(patient, 'patient_profile') or not patient.patient_profile.therapist or patient.patient_profile.therapist.user != user:
                 return Response(
-                    {'detail': 'Therapist has reached maximum patient capacity.'}, 
+                    {'detail': 'Patient is not connected to this therapist.'}, 
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
-            # Get or create patient profile
-            patient_profile, created = PatientProfile.objects.get_or_create(
-                user=user,
-                defaults={
-                    'therapist': therapist_profile,
-                    'connected_at': timezone.now(),
-                }
-            )
-            
-            if not created and patient_profile.therapist:
-                return Response(
-                    {'detail': 'You are already paired with a therapist.'}, 
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            # Pair with therapist
-            patient_profile.therapist = therapist_profile
-            patient_profile.connected_at = timezone.now()
-            patient_profile.save()
+            # Assign patient to session
+            session.assign_patient(patient)
             
             return Response({
-                'detail': 'Successfully paired with therapist.',
-                'therapist': {
-                    'name': therapist_profile.user.full_name,
-                    'specialization': therapist_profile.specialization,
-                    'clinic_name': therapist_profile.clinic_name,
-                    'email': therapist_profile.user.email,
-                    'phone': therapist_profile.user.phone_number,
-                }
+                'detail': 'Patient assigned to session successfully.',
+                'session': SessionSerializer(session).data
             }, status=status.HTTP_200_OK)
             
-        except TherapistProfile.DoesNotExist:
+        except User.DoesNotExist:
             return Response(
-                {'detail': 'Invalid pairing code.'}, 
-                status=status.HTTP_400_BAD_REQUEST
+                {'detail': 'Patient not found.'}, 
+                status=status.HTTP_404_NOT_FOUND
             )
 
 
-class PatientDashboardView(APIView):
+@extend_schema(
+    tags=['Patient Dashboard'],
+    summary="Patient dashboard",
+    description="Get comprehensive dashboard data for the authenticated patient including sessions, therapist info, and progress",
+)
+class PatientDashboardView(generics.GenericAPIView):
     """Get patient dashboard data"""
     permission_classes = [permissions.IsAuthenticated]
+    
+    class PatientDashboardResponseSerializer(serializers.Serializer):
+        patient_info = serializers.DictField()
+        therapist_info = serializers.DictField()
+        upcoming_sessions = serializers.ListField()
+        recent_sessions = serializers.ListField()
+        session_stats = serializers.DictField()
+    
+    serializer_class = PatientDashboardResponseSerializer
     
     def get(self, request):
         user = request.user
@@ -556,24 +1326,24 @@ class PatientDashboardView(APIView):
             # Get upcoming sessions
             upcoming_sessions = Session.objects.filter(
                 patient=user,
-                status='scheduled',
+                status='UPCOMING',
                 scheduled_date__gte=timezone.now()
             ).order_by('scheduled_date')[:3]
             
             # Get recent sessions
             recent_sessions = Session.objects.filter(
                 patient=user,
-                status='completed'
+                status='COMPLETED'
             ).order_by('-scheduled_date')[:5]
             
             # Calculate stats
             total_sessions = Session.objects.filter(patient=user).count()
-            completed_sessions = Session.objects.filter(patient=user, status='completed').count()
+            completed_sessions = Session.objects.filter(patient=user, status='COMPLETED').count()
             
             # Get mood trend (last 5 completed sessions)
             mood_data = Session.objects.filter(
                 patient=user,
-                status='completed',
+                status='COMPLETED',
                 patient_mood_after__isnull=False
             ).order_by('-scheduled_date')[:5].values_list('patient_mood_after', flat=True)
             
@@ -613,9 +1383,24 @@ class PatientDashboardView(APIView):
             )
 
 
-class TherapistDashboardView(APIView):
+@extend_schema(
+    tags=['Therapist Dashboard'],
+    summary="Therapist dashboard",
+    description="Get comprehensive dashboard data for the authenticated therapist including today's sessions, patient stats, and analytics",
+)
+class TherapistDashboardView(generics.GenericAPIView):
     """Get therapist dashboard data"""
     permission_classes = [permissions.IsAuthenticated]
+    
+    class TherapistDashboardResponseSerializer(serializers.Serializer):
+        therapist_info = serializers.DictField()
+        today_sessions = serializers.ListField()
+        upcoming_sessions = serializers.ListField()
+        patient_stats = serializers.DictField()
+        session_stats = serializers.DictField()
+        recent_patients = serializers.ListField()
+    
+    serializer_class = TherapistDashboardResponseSerializer
     
     def get(self, request):
         user = request.user
@@ -639,7 +1424,7 @@ class TherapistDashboardView(APIView):
             next_week = timezone.now() + timedelta(days=7)
             upcoming_sessions = Session.objects.filter(
                 therapist=user,
-                status='scheduled',
+                status='UPCOMING',
                 scheduled_date__gte=timezone.now(),
                 scheduled_date__lte=next_week
             ).order_by('scheduled_date')
@@ -676,8 +1461,8 @@ class TherapistDashboardView(APIView):
                     'today_sessions': today_sessions.count(),
                     'upcoming_sessions': upcoming_sessions.count(),
                     'total_sessions_30_days': sessions_last_30_days.count(),
-                    'completed_sessions_30_days': sessions_last_30_days.filter(status='completed').count(),
-                    'cancelled_sessions_30_days': sessions_last_30_days.filter(status='cancelled').count(),
+                    'completed_sessions_30_days': sessions_last_30_days.filter(status='COMPLETED').count(),
+                    'cancelled_sessions_30_days': sessions_last_30_days.filter(status='CANCELLED').count(),
                 },
                 'today_sessions': SessionSerializer(today_sessions, many=True).data,
                 'upcoming_sessions': SessionSerializer(upcoming_sessions[:5], many=True).data,
@@ -693,9 +1478,39 @@ class TherapistDashboardView(APIView):
             )
 
 
-class SessionNotesView(APIView):
+@extend_schema(
+    tags=['Therapy Sessions'],
+    summary="Update session notes",
+    description="Update session notes and other session details during or after the session",
+    examples=[
+        OpenApiExample(
+            'Update Session Notes',
+            summary='Update session notes and observations',
+            description='Update various session fields including notes and patient mood',
+            value={
+                "session_notes": "Patient was more engaged today. Discussed family relationships.",
+                "patient_mood_before": 5,
+                "patient_mood_after": 7,
+                "therapist_observations": "Noticeable improvement in communication skills",
+                "session_effectiveness": 8
+            },
+            request_only=True,
+        ),
+    ]
+)
+class SessionNotesView(generics.GenericAPIView):
     """Update session notes during or after session"""
     permission_classes = [permissions.IsAuthenticated]
+    
+    class SessionNotesRequestSerializer(serializers.Serializer):
+        session_notes = serializers.CharField(required=True)
+        therapist_observations = serializers.CharField(required=False, allow_blank=True)
+    
+    class SessionNotesResponseSerializer(serializers.Serializer):
+        detail = serializers.CharField()
+        session = SessionSerializer()
+    
+    serializer_class = SessionNotesRequestSerializer
     
     def patch(self, request, session_id):
         user = request.user
@@ -723,374 +1538,4 @@ class SessionNotesView(APIView):
         return Response({
             'detail': 'Session notes updated successfully.',
             'session': SessionSerializer(session).data
-        }, status=status.HTTP_200_OK) 
-       
-        for field in allowed_fields:
-            if field in request.data:
-                setattr(session, field, request.data[field])
-        
-        session.save()
-        
-        return Response({
-            'detail': 'Session notes updated successfully.',
-            'session': SessionSerializer(session).data
         }, status=status.HTTP_200_OK)
-
-
-@extend_schema(
-    tags=['Patient Management'],
-    summary="Patient pairing requests",
-    description="Get pending pairing requests for the authenticated therapist",
-)
-class PatientPairingRequestsView(generics.ListAPIView):
-    """List pending patient pairing requests for therapist"""
-    serializer_class = PatientPairingRequestSerializer
-    permission_classes = [permissions.IsAuthenticated]
-    
-    def get_queryset(self):
-        user = self.request.user
-        if user.user_type != 'therapist':
-            return PatientPairingRequest.objects.none()
-        
-        return PatientPairingRequest.objects.filter(
-            therapist=user,
-            status='pending'
-        ).order_by('-created_at')
-
-
-@extend_schema(
-    tags=['Patient Management'],
-    summary="Approve patient pairing",
-    description="Approve a patient pairing request and optionally create new patient profile or connect to existing patient",
-    examples=[
-        OpenApiExample(
-            'Approve with Existing Patient',
-            summary='Approve pairing for existing patient',
-            description='Approve pairing request and connect patient to therapist',
-            value={
-                "action": "approve",
-                "create_new_patient": False
-            },
-            request_only=True,
-        ),
-        OpenApiExample(
-            'Approve with New Patient Profile',
-            summary='Create new patient profile and approve pairing',
-            description='Create comprehensive patient profile and approve pairing',
-            value={
-                "action": "approve",
-                "create_new_patient": True,
-                "patient_data": {
-                    "primary_concern": "Anxiety and stress management",
-                    "therapy_start_date": "2024-01-01",
-                    "session_frequency": "weekly",
-                    "emergency_contact_name": "Emergency Contact",
-                    "emergency_contact_phone": "+1234567890",
-                    "medical_history": "No significant medical history",
-                    "current_medications": "None",
-                    "preferred_language": "en"
-                }
-            },
-            request_only=True,
-        ),
-    ]
-)
-class ApprovePairingView(APIView):
-    """Approve or reject patient pairing request"""
-    permission_classes = [permissions.IsAuthenticated]
-    
-    def post(self, request, request_id):
-        user = request.user
-        if user.user_type != 'therapist':
-            return Response(
-                {'detail': 'Only therapists can approve pairing requests.'}, 
-                status=status.HTTP_403_FORBIDDEN
-            )
-        
-        pairing_request = get_object_or_404(
-            PatientPairingRequest, 
-            id=request_id, 
-            therapist=user,
-            status='pending'
-        )
-        
-        action = request.data.get('action')
-        
-        if action == 'approve':
-            create_new_patient = request.data.get('create_new_patient', False)
-            patient_data = request.data.get('patient_data', {})
-            
-            try:
-                patient_profile = pairing_request.approve_pairing(
-                    create_new_patient=create_new_patient,
-                    patient_data=patient_data
-                )
-                
-                return Response({
-                    'detail': 'Pairing request approved successfully.',
-                    'patient': PatientListSerializer(patient_profile.user).data
-                }, status=status.HTTP_200_OK)
-                
-            except Exception as e:
-                return Response(
-                    {'detail': f'Error approving pairing: {str(e)}'}, 
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-        
-        elif action == 'reject':
-            reason = request.data.get('reason', '')
-            pairing_request.reject_pairing(reason)
-            
-            return Response({
-                'detail': 'Pairing request rejected successfully.'
-            }, status=status.HTTP_200_OK)
-        
-        else:
-            return Response(
-                {'detail': 'Invalid action. Use "approve" or "reject".'}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-
-@extend_schema(
-    tags=['Therapy Sessions'],
-    summary="Assign patient to quick session",
-    description="Assign a patient to a quick session that was created without a specific patient",
-    examples=[
-        OpenApiExample(
-            'Assign Patient to Session',
-            summary='Assign existing patient to quick session',
-            description='Convert a quick session to a regular session by assigning a patient',
-            value={
-                "patient_id": "123e4567-e89b-12d3-a456-426614174000"
-            },
-            request_only=True,
-        ),
-    ]
-)
-class AssignPatientToSessionView(APIView):
-    """Assign a patient to a quick session"""
-    permission_classes = [permissions.IsAuthenticated]
-    
-    def post(self, request, session_id):
-        user = request.user
-        if user.user_type != 'therapist':
-            return Response(
-                {'detail': 'Only therapists can assign patients to sessions.'}, 
-                status=status.HTTP_403_FORBIDDEN
-            )
-        
-        session = get_object_or_404(Session, id=session_id, therapist=user)
-        
-        if not session.is_quick_session:
-            return Response(
-                {'detail': 'This session already has an assigned patient.'}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        patient_id = request.data.get('patient_id')
-        if not patient_id:
-            return Response(
-                {'detail': 'Patient ID is required.'}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        try:
-            patient = User.objects.get(id=patient_id, user_type='patient')
-            
-            # Check if patient is connected to this therapist
-            if not hasattr(patient, 'patient_profile') or not patient.patient_profile.therapist or patient.patient_profile.therapist.user != user:
-                return Response(
-                    {'detail': 'Patient is not connected to this therapist.'}, 
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            # Assign patient to session
-            session.assign_patient(patient)
-            
-            return Response({
-                'detail': 'Patient assigned to session successfully.',
-                'session': SessionSerializer(session).data
-            }, status=status.HTTP_200_OK)
-            
-        except User.DoesNotExist:
-            return Response(
-                {'detail': 'Patient not found.'}, 
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-
-@extend_schema(
-    tags=['Therapy Sessions'],
-    summary="Get past sessions",
-    description="Get all past sessions for the authenticated therapist with filtering options",
-    parameters=[
-        OpenApiParameter(name='patient_id', description='Filter by specific patient', required=False, type=str),
-        OpenApiParameter(name='limit', description='Limit number of results', required=False, type=int),
-        OpenApiParameter(name='offset', description='Offset for pagination', required=False, type=int),
-    ],
-)
-class PastSessionsView(generics.ListAPIView):
-    """Get past sessions for therapist"""
-    serializer_class = SessionSerializer
-    permission_classes = [permissions.IsAuthenticated]
-    
-    def get_queryset(self):
-        user = self.request.user
-        if user.user_type != 'therapist':
-            return Session.objects.none()
-        
-        queryset = Session.objects.filter(
-            therapist=user,
-            status__in=['completed', 'cancelled', 'no_show']
-        ).order_by('-scheduled_date')
-        
-        # Filter by patient if specified
-        patient_id = self.request.query_params.get('patient_id')
-        if patient_id:
-            queryset = queryset.filter(patient__id=patient_id)
-        
-        return queryset
-
-
-# Add comprehensive OpenAPI documentation to remaining views
-@extend_schema(
-    tags=['Therapy Sessions'],
-    summary="End therapy session",
-    description="End an in-progress therapy session and record session completion data",
-    examples=[
-        OpenApiExample(
-            'End Session',
-            summary='End session with completion data',
-            description='End session and record notes, mood changes, and effectiveness',
-            value={
-                "session_notes": "Patient showed significant improvement. Discussed coping strategies and assigned homework.",
-                "patient_mood_after": 7,
-                "homework_assigned": "Practice breathing exercises daily for 10 minutes",
-                "next_session_goals": "Continue anxiety management, introduce mindfulness",
-                "session_effectiveness": 8
-            },
-            request_only=True,
-        ),
-    ]
-)
-class EndSessionView(APIView):
-    pass  # Implementation already exists above
-
-
-@extend_schema(
-    tags=['Analytics'],
-    summary="Session statistics",
-    description="Get comprehensive session statistics for the authenticated therapist",
-    parameters=[
-        OpenApiParameter(name='days', description='Number of days to include in statistics (default: 30)', required=False, type=int),
-    ],
-    examples=[
-        OpenApiExample(
-            'Session Statistics Response',
-            summary='Comprehensive session statistics',
-            description='Detailed statistics about therapist sessions',
-            value={
-                "total_sessions": 45,
-                "completed_sessions": 38,
-                "cancelled_sessions": 5,
-                "no_show_sessions": 2,
-                "upcoming_sessions": 12,
-                "total_patients": 15,
-                "average_session_effectiveness": 7.8,
-                "sessions_by_status": [
-                    {"status": "completed", "count": 38},
-                    {"status": "scheduled", "count": 12},
-                    {"status": "cancelled", "count": 5}
-                ],
-                "sessions_by_type": [
-                    {"session_type": "individual", "count": 40},
-                    {"session_type": "group", "count": 5}
-                ]
-            },
-            response_only=True,
-        ),
-    ]
-)
-class SessionStatsView(APIView):
-    pass  # Implementation already exists above
-
-
-@extend_schema(
-    tags=['Patient Dashboard'],
-    summary="Patient dashboard",
-    description="Get comprehensive dashboard data for the authenticated patient including sessions, therapist info, and progress",
-)
-class PatientDashboardView(APIView):
-    pass  # Implementation already exists above
-
-
-@extend_schema(
-    tags=['Therapist Dashboard'],
-    summary="Therapist dashboard",
-    description="Get comprehensive dashboard data for the authenticated therapist including today's sessions, patient stats, and analytics",
-)
-class TherapistDashboardView(APIView):
-    pass  # Implementation already exists above
-
-
-@extend_schema(
-    tags=['Patient Management'],
-    summary="Patient sessions",
-    description="Get all sessions for the authenticated patient",
-)
-class PatientSessionsView(generics.ListAPIView):
-    pass  # Implementation already exists above
-
-
-@extend_schema(
-    tags=['Therapy Sessions'],
-    summary="Upcoming sessions",
-    description="Get upcoming sessions for the authenticated user (therapist or patient)",
-)
-class UpcomingSessionsView(generics.ListAPIView):
-    pass  # Implementation already exists above
-
-
-@extend_schema(
-    tags=['Patient Management'],
-    summary="Pair with therapist",
-    description="Pair a patient with a therapist using the therapist's pairing code",
-    examples=[
-        OpenApiExample(
-            'Pair with Therapist',
-            summary='Pair patient with therapist using code',
-            description='Use therapist pairing code to request connection',
-            value={
-                "pairing_code": "ABC12345"
-            },
-            request_only=True,
-        ),
-    ]
-)
-class PairPatientView(APIView):
-    pass  # Implementation already exists above
-
-
-@extend_schema(
-    tags=['Therapy Sessions'],
-    summary="Update session notes",
-    description="Update session notes and other session details during or after the session",
-    examples=[
-        OpenApiExample(
-            'Update Session Notes',
-            summary='Update session notes and observations',
-            description='Update various session fields including notes and patient mood',
-            value={
-                "session_notes": "Patient was more engaged today. Discussed family relationships.",
-                "patient_mood_before": 5,
-                "patient_mood_after": 7,
-                "therapist_observations": "Noticeable improvement in communication skills",
-                "session_effectiveness": 8
-            },
-            request_only=True,
-        ),
-    ]
-)
-class SessionNotesView(APIView):
-    pass  # Implementation already exists above

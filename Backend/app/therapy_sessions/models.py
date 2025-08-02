@@ -9,12 +9,13 @@ User = get_user_model()
 
 class Session(models.Model):
     SESSION_STATUS = [
-        ('scheduled', 'Scheduled'),
-        ('in_progress', 'In Progress'),
-        ('completed', 'Completed'),
-        ('cancelled', 'Cancelled'),
-        ('no_show', 'No Show'),
-        ('rescheduled', 'Rescheduled'),
+        ('REQUESTED', 'Requested'),
+        ('UPCOMING', 'Upcoming'),
+        ('IN_PROGRESS', 'In Progress'),
+        ('COMPLETED', 'Completed'),
+        ('CANCELLED', 'Cancelled'),
+        ('RESCHEDULED', 'Rescheduled'),
+        ('NO_SHOW', 'No Show'),
     ]
     
     SESSION_TYPES = [
@@ -75,7 +76,7 @@ class Session(models.Model):
     duration_minutes = models.IntegerField(default=60)
     
     # Status and location
-    status = models.CharField(max_length=20, choices=SESSION_STATUS, default='scheduled')
+    status = models.CharField(max_length=20, choices=SESSION_STATUS, default='UPCOMING')
     location = models.CharField(max_length=200, blank=True, null=True, help_text="Session location or platform")
     is_online = models.BooleanField(default=False)
     
@@ -104,6 +105,10 @@ class Session(models.Model):
     # Consent and permissions
     consent_recording = models.BooleanField(default=False, help_text="Patient consented to recording")
     consent_ai_analysis = models.BooleanField(default=False, help_text="Patient consented to AI analysis")
+    
+    # WebSocket connection fields
+    websocket_room_id = models.UUIDField(default=uuid.uuid4, unique=True, help_text="Unique room ID for WebSocket connection")
+    websocket_active = models.BooleanField(default=False, help_text="Whether WebSocket connection is active")
     
     # Billing and administrative
     fee_charged = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
@@ -173,21 +178,29 @@ class Session(models.Model):
     
     def start_session(self):
         """Mark session as started"""
-        self.status = 'in_progress'
+        self.status = 'IN_PROGRESS'
         self.actual_start_time = timezone.now()
         self.save()
     
     def end_session(self):
         """Mark session as completed"""
-        self.status = 'completed'
+        self.status = 'COMPLETED'
         self.actual_end_time = timezone.now()
         self.save()
     
     def cancel_session(self, reason=None):
         """Cancel the session"""
-        self.status = 'cancelled'
+        self.status = 'CANCELLED'
         if reason:
             self.session_notes = f"Cancelled: {reason}\n\n{self.session_notes or ''}"
+        self.save()
+    
+    def reschedule_session(self, new_date, reason=None):
+        """Reschedule the session"""
+        self.status = 'RESCHEDULED'
+        self.scheduled_date = new_date
+        if reason:
+            self.session_notes = f"Rescheduled: {reason}\n\n{self.session_notes or ''}"
         self.save()
     
     def __str__(self):
@@ -197,6 +210,43 @@ class Session(models.Model):
         db_table = 'sessions'
         ordering = ['-scheduled_date']
         unique_together = ['patient', 'therapist', 'session_number']
+        indexes = [
+            models.Index(fields=['therapist', 'scheduled_date'], name='therapist_date_idx'),
+            models.Index(fields=['patient', 'scheduled_date'], name='patient_date_idx'),
+            models.Index(fields=['status', 'scheduled_date'], name='status_date_idx'),
+            models.Index(fields=['is_quick_session'], name='quick_session_idx'),
+            models.Index(fields=['transcription_id'], name='transcription_idx'),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(duration_minutes__gte=15),
+                name='min_duration'
+            ),
+            models.CheckConstraint(
+                check=models.Q(duration_minutes__lte=480),  # 8 hours max
+                name='max_duration'
+            ),
+            models.CheckConstraint(
+                check=models.Q(patient_mood_before__gte=1, patient_mood_before__lte=10) | models.Q(patient_mood_before__isnull=True),
+                name='valid_mood_before'
+            ),
+            models.CheckConstraint(
+                check=models.Q(patient_mood_after__gte=1, patient_mood_after__lte=10) | models.Q(patient_mood_after__isnull=True),
+                name='valid_mood_after'
+            ),
+            models.CheckConstraint(
+                check=models.Q(session_effectiveness__gte=1, session_effectiveness__lte=10) | models.Q(session_effectiveness__isnull=True),
+                name='valid_effectiveness'
+            ),
+            # Ensure quick sessions have patient name or regular sessions have patient
+            models.CheckConstraint(
+                check=(
+                    models.Q(is_quick_session=True, quick_session_patient_name__isnull=False) |
+                    models.Q(is_quick_session=False, patient__isnull=False)
+                ),
+                name='patient_or_quick_name'
+            ),
+        ]
 
 class SessionQRCode(models.Model):
     session = models.OneToOneField(Session, on_delete=models.CASCADE, related_name='qr_code')
@@ -374,79 +424,7 @@ class TherapistAvailability(models.Model):
         unique_together = ['therapist', 'day_of_week', 'start_time', 'end_time']
 
 
-class PatientPairingRequest(models.Model):
-    """Handle patient-therapist pairing requests"""
-    PAIRING_STATUS = [
-        ('pending', 'Pending'),
-        ('approved', 'Approved'),
-        ('rejected', 'Rejected'),
-        ('expired', 'Expired'),
-    ]
-    
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    patient = models.ForeignKey(User, on_delete=models.CASCADE, related_name='pairing_requests')
-    therapist = models.ForeignKey(User, on_delete=models.CASCADE, related_name='received_pairing_requests')
-    
-    # Pairing details
-    therapist_pin = models.CharField(max_length=9, help_text="Therapist PIN used for pairing")
-    status = models.CharField(max_length=20, choices=PAIRING_STATUS, default='pending')
-    
-    # Patient information for therapist review
-    patient_message = models.TextField(blank=True, null=True, help_text="Optional message from patient")
-    
-    # Therapist response
-    therapist_response = models.TextField(blank=True, null=True, help_text="Therapist's response message")
-    reviewed_at = models.DateTimeField(blank=True, null=True)
-    
-    # Metadata
-    created_at = models.DateTimeField(auto_now_add=True)
-    expires_at = models.DateTimeField(help_text="When this pairing request expires")
-    
-    def approve_pairing(self, create_new_patient=False, patient_data=None):
-        """Approve the pairing request"""
-        from users.models import PatientProfile, TherapistProfile
-        
-        self.status = 'approved'
-        self.reviewed_at = timezone.now()
-        self.save()
-        
-        # Get or create patient profile
-        try:
-            patient_profile = self.patient.patient_profile
-        except PatientProfile.DoesNotExist:
-            # Create new patient profile
-            patient_profile = PatientProfile.objects.create(
-                user=self.patient,
-                **(patient_data or {})
-            )
-        
-        # Connect to therapist
-        therapist_profile = self.therapist.therapist_profile
-        patient_profile.therapist = therapist_profile
-        patient_profile.connected_at = timezone.now()
-        patient_profile.save()
-        
-        return patient_profile
-    
-    def reject_pairing(self, reason=None):
-        """Reject the pairing request"""
-        self.status = 'rejected'
-        self.reviewed_at = timezone.now()
-        if reason:
-            self.therapist_response = reason
-        self.save()
-    
-    @property
-    def is_expired(self):
-        """Check if the pairing request has expired"""
-        return timezone.now() > self.expires_at
-    
-    def __str__(self):
-        return f"Pairing request: {self.patient.full_name} -> {self.therapist.full_name}"
-    
-    class Meta:
-        db_table = 'patient_pairing_requests'
-        ordering = ['-created_at']
+
 
 
 
